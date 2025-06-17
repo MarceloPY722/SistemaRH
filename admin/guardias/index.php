@@ -67,8 +67,12 @@ $lista_guardias = $conn->query("
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         .navbar {
-            background: linear-gradient(45deg, #2c3e50, #34495e) !important;
+            background: linear-gradient(45deg, #104c75, #0d3d5c) !important;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .btn-primary {
+            background: linear-gradient(45deg, #104c75, #0d3d5c);
+            border: none;
         }
         .card {
             border: none;

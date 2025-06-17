@@ -30,25 +30,44 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
     $fecha_ingreso = $_POST['fecha_ingreso'];
     $observaciones = trim($_POST['observaciones']);
     
-    // Validar CIN único
-    $check_cin = $conn->prepare("SELECT id FROM policias WHERE cin = ? AND activo = 1");
-    $check_cin->bind_param("s", $cin);
-    $check_cin->execute();
-    $result = $check_cin->get_result();
-    
-    if ($result->num_rows > 0) {
-        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> El CIN ya está registrado en el sistema</div>";
-    } else {
-        $sql = "INSERT INTO policias (nombre, apellido, cin, grado_id, especialidad_id, cargo, comisionamiento, telefono, region, lugar_guardia_id, fecha_ingreso, observaciones) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssiisisssis", $nombre, $apellido, $cin, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region, $lugar_guardia_id, $fecha_ingreso, $observaciones);
+    // Validar campos obligatorios
+    if (empty($nombre) || empty($apellido) || empty($cin) || empty($grado_id) || empty($region) || empty($fecha_ingreso)) {
+        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Todos los campos marcados con * son obligatorios</div>";
+    }
+    // Validar formato de fecha
+    // Reemplazar la validación de fecha existente (líneas 38-42) con:
+    elseif (empty($fecha_ingreso) || strlen($fecha_ingreso) !== 10 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha_ingreso)) {
+        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> La fecha de ingreso debe estar en formato válido (YYYY-MM-DD)</div>";
+    }
+    // Validar que sea una fecha real
+    elseif (!checkdate(substr($fecha_ingreso, 5, 2), substr($fecha_ingreso, 8, 2), substr($fecha_ingreso, 0, 4))) {
+        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> La fecha ingresada no es válida</div>";
+    }
+    // Validar que la fecha no sea futura
+    elseif (strtotime($fecha_ingreso) > time()) {
+        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> La fecha de ingreso no puede ser futura</div>";
+    }
+    else {
+        // Validar CIN único
+        $check_cin = $conn->prepare("SELECT id FROM policias WHERE cin = ? AND activo = 1");
+        $check_cin->bind_param("s", $cin);
+        $check_cin->execute();
+        $result = $check_cin->get_result();
         
-        if ($stmt->execute()) {
-            $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle'></i> Policía registrado exitosamente</div>";
-            // Limpiar formulario
-            $_POST = array();
+        if ($result->num_rows > 0) {
+            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> El CIN ya está registrado en el sistema</div>";
         } else {
-            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al registrar policía: " . $conn->error . "</div>";
+            $sql = "INSERT INTO policias (nombre, apellido, cin, grado_id, especialidad_id, cargo, comisionamiento, telefono, region, lugar_guardia_id, fecha_ingreso, observaciones) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("sssiisisssis", $nombre, $apellido, $cin, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region, $lugar_guardia_id, $fecha_ingreso, $observaciones);
+            
+            if ($stmt->execute()) {
+                $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle'></i> Policía registrado exitosamente</div>";
+                // Limpiar formulario
+                $_POST = array();
+            } else {
+                $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al registrar policía: " . $conn->error . "</div>";
+            }
         }
     }
 }
@@ -67,8 +86,16 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         .navbar {
-            background: linear-gradient(45deg, #2c3e50, #34495e) !important;
+            background: linear-gradient(45deg, #104c75, #0d3d5c) !important;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .btn-primary {
+            background: linear-gradient(45deg, #104c75, #0d3d5c);
+            border: none;
+        }
+        .form-control:focus {
+            border-color: #104c75;
+            box-shadow: 0 0 0 0.2rem rgba(16, 76, 117, 0.25);
         }
         .card {
             border: none;
@@ -211,7 +238,9 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
                                         <div class="mb-3">
                                             <label for="fecha_ingreso" class="form-label">Fecha de Ingreso <span class="required">*</span></label>
                                             <input type="date" class="form-control" id="fecha_ingreso" name="fecha_ingreso" 
-                                                   value="<?php echo isset($_POST['fecha_ingreso']) ? $_POST['fecha_ingreso'] : ''; ?>" required>
+                                                   value="<?php echo isset($_POST['fecha_ingreso']) ? $_POST['fecha_ingreso'] : ''; ?>" 
+                                                   max="<?php echo date('Y-m-d'); ?>" required>
+                                            <div class="form-text">Formato: YYYY-MM-DD (no puede ser fecha futura)</div>
                                         </div>
                                     </div>
                                 </div>
@@ -310,6 +339,41 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
         document.getElementById('cin').addEventListener('input', function(e) {
             this.value = this.value.replace(/[^0-9]/g, '');
         });
+    </script>
+    // Agregar antes del cierre de </body>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const fechaIngresoInput = document.getElementById('fecha_ingreso');
+        const form = document.querySelector('form');
+        
+        // Validación en tiempo real
+        fechaIngresoInput.addEventListener('change', function() {
+            const fecha = this.value;
+            const fechaRegex = /^\d{4}-\d{2}-\d{2}$/;
+            
+            if (fecha && !fechaRegex.test(fecha)) {
+                this.setCustomValidity('La fecha debe estar en formato YYYY-MM-DD');
+                this.reportValidity();
+            } else if (fecha && new Date(fecha) > new Date()) {
+                this.setCustomValidity('La fecha no puede ser futura');
+                this.reportValidity();
+            } else {
+                this.setCustomValidity('');
+            }
+        });
+        
+        // Validación antes del envío
+        form.addEventListener('submit', function(e) {
+            const fecha = fechaIngresoInput.value;
+            
+            if (!fecha || fecha.length !== 10 || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+                e.preventDefault();
+                alert('Por favor ingrese una fecha válida en formato YYYY-MM-DD');
+                fechaIngresoInput.focus();
+                return false;
+            }
+        });
+    });
     </script>
 </body>
 </html>

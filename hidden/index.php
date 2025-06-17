@@ -39,64 +39,29 @@ if ($_POST) {
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            background: linear-gradient(135deg, #104c75 0%, #0d3d5c 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
-            padding: 10px 0;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
         }
-        .container {
-            width: 100%;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 15px;
-        }
-        .card {
-            border: none;
-            border-radius: 20px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.3);
-            background: rgba(255, 255, 255, 0.98);
-            backdrop-filter: blur(10px);
-            margin: 10px 0;
-            max-width: 900px;
-            width: 100%;
-        }
-        .card-header {
-            background: linear-gradient(45deg, #2c3e50, #34495e);
+        .login-header {
+            background: linear-gradient(45deg, #104c75, #0d3d5c);
             color: white;
-            border-radius: 20px 20px 0 0 !important;
             text-align: center;
-            padding: 20px 15px;
-        }
-        .card-header h3 {
-            font-size: 1.6rem;
-            margin-bottom: 5px;
-            font-weight: 600;
-        }
-        .card-header p {
-            font-size: 1rem;
-            opacity: 0.9;
-            margin-bottom: 0;
-        }
-        .card-body {
-            padding: 25px 30px;
+            padding: 40px 30px;
         }
         .btn-primary {
-            background: linear-gradient(45deg, #3498db, #2980b9);
+            background: linear-gradient(45deg, #104c75, #0d3d5c);
             border: none;
             border-radius: 25px;
-            padding: 12px 30px;
-            font-size: 16px;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            width: 100%;
         }
         .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(52, 152, 219, 0.4);
-            background: linear-gradient(45deg, #2980b9, #3498db);
+            background: linear-gradient(45deg, #0d3d5c, #104c75);
+        }
+        .form-control:focus {
+            border-color: #104c75;
+            box-shadow: 0 0 0 0.2rem rgba(16, 76, 117, 0.25);
         }
         .form-control, .form-select {
             border-radius: 10px;

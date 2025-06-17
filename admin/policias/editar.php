@@ -87,8 +87,16 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         .navbar {
-            background: linear-gradient(45deg, #2c3e50, #34495e) !important;
+            background: linear-gradient(45deg, #104c75, #0d3d5c) !important;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .btn-primary {
+            background: linear-gradient(45deg, #104c75, #0d3d5c);
+            border: none;
+        }
+        .form-control:focus {
+            border-color: #104c75;
+            box-shadow: 0 0 0 0.2rem rgba(16, 76, 117, 0.25);
         }
         .card {
             border: none;

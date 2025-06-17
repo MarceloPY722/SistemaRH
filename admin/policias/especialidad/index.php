@@ -146,17 +146,17 @@ if ($result) {
             text-align: center;
         }
         .table th {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #104c75 0%, #0d3d5c 100%);
             color: white;
             border: none;
             font-weight: 600;
         }
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #104c75 0%, #0d3d5c 100%);
             border: none;
         }
         .btn-primary:hover {
-            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+            background: linear-gradient(135deg, #0d3d5c 0%, #104c75 100%);
         }
     </style>
 </head>
