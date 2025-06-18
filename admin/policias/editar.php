@@ -294,7 +294,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                         
                                         <div class="mb-3">
                                             <label for="observaciones" class="form-label">Observaciones</label>
-                                            <textarea class="form-control" id="observaciones" name="observaciones" rows="6" 
+                                            <textarea class="form-control" id="observaciones" name="observaciones" rows="3" 
                                                       placeholder="Información adicional sobre el policía..."><?php echo htmlspecialchars($policia['observaciones']); ?></textarea>
                                         </div>
                                         

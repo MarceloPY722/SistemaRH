@@ -23,35 +23,104 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'rotar') {
     $mensaje = "<div class='alert alert-success'>Guardia rotada exitosamente</div>";
 }
 
-// Obtener lista de guardias ordenada
-$lista_guardias = $conn->query("
-    SELECT 
-        lg.posicion,
-        p.id as policia_id,
-        p.nombre,
-        p.apellido,
-        p.cin,
-        g.nombre as grado,
-        g.nivel_jerarquia,
-        p.antiguedad_dias,
-        lguar.nombre as lugar_guardia,
-        lg.ultima_guardia_fecha,
-        CASE 
-            WHEN EXISTS (
+// Procesar generación de guardia general
+if ($_POST && isset($_POST['action']) && $_POST['action'] == 'generar_guardia_general') {
+    // Obtener 5 policías disponibles de cada lugar de guardia
+    $guardia_general = [];
+    
+    $lugares = $conn->query("SELECT id, nombre FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
+    
+    while ($lugar = $lugares->fetch_assoc()) {
+        $policias_lugar = $conn->prepare("
+            SELECT 
+                lg.posicion,
+                p.id as policia_id,
+                p.nombre,
+                p.apellido,
+                p.cin,
+                g.nombre as grado,
+                lguar.nombre as lugar_guardia
+            FROM lista_guardias lg
+            JOIN policias p ON lg.policia_id = p.id
+            JOIN grados g ON p.grado_id = g.id
+            LEFT JOIN lugares_guardias lguar ON p.lugar_guardia_id = lguar.id
+            WHERE p.activo = TRUE 
+            AND p.lugar_guardia_id = ?
+            AND NOT EXISTS (
                 SELECT 1 FROM ausencias a 
                 WHERE a.policia_id = p.id 
                 AND a.estado = 'APROBADA'
                 AND CURDATE() BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, CURDATE())
-            ) THEN 'NO DISPONIBLE'
-            ELSE 'DISPONIBLE'
-        END as disponibilidad
-    FROM lista_guardias lg
-    JOIN policias p ON lg.policia_id = p.id
-    JOIN grados g ON p.grado_id = g.id
-    LEFT JOIN lugares_guardias lguar ON p.lugar_guardia_id = lguar.id
-    WHERE p.activo = TRUE
-    ORDER BY lg.posicion
-");
+            )
+            ORDER BY lg.posicion
+            LIMIT 5
+        ");
+        $policias_lugar->bind_param("i", $lugar['id']);
+        $policias_lugar->execute();
+        $result = $policias_lugar->get_result();
+        
+        $policias_seleccionados = [];
+        while ($policia = $result->fetch_assoc()) {
+            $policias_seleccionados[] = $policia;
+        }
+        
+        if (!empty($policias_seleccionados)) {
+            $guardia_general[$lugar['nombre']] = $policias_seleccionados;
+        }
+    }
+    
+    $mensaje = "<div class='alert alert-success'>Guardia general generada exitosamente</div>";
+}
+
+// Obtener lugares de guardias con sus policías
+$lugares_guardias = $conn->query("SELECT id, nombre, zona, descripcion FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
+
+// Función para obtener policías por lugar
+function obtenerPoliciasPorLugar($conn, $lugar_id, $limite = 5) {
+    $stmt = $conn->prepare("
+        SELECT 
+            lg.posicion,
+            p.id as policia_id,
+            p.nombre,
+            p.apellido,
+            p.cin,
+            g.nombre as grado,
+            g.nivel_jerarquia,
+            p.antiguedad_dias,
+            lg.ultima_guardia_fecha,
+            CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM ausencias a 
+                    WHERE a.policia_id = p.id 
+                    AND a.estado = 'APROBADA'
+                    AND CURDATE() BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, CURDATE())
+                ) THEN 'NO DISPONIBLE'
+                ELSE 'DISPONIBLE'
+            END as disponibilidad
+        FROM lista_guardias lg
+        JOIN policias p ON lg.policia_id = p.id
+        JOIN grados g ON p.grado_id = g.id
+        WHERE p.activo = TRUE AND p.lugar_guardia_id = ?
+        ORDER BY lg.posicion
+        LIMIT ?
+    ");
+    $stmt->bind_param("ii", $lugar_id, $limite);
+    $stmt->execute();
+    return $stmt->get_result();
+}
+
+// Función para contar total de policías por lugar
+function contarPoliciasPorLugar($conn, $lugar_id) {
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) as total
+        FROM lista_guardias lg
+        JOIN policias p ON lg.policia_id = p.id
+        WHERE p.activo = TRUE AND p.lugar_guardia_id = ?
+    ");
+    $stmt->bind_param("i", $lugar_id);
+    $stmt->execute();
+    return $stmt->get_result()->fetch_assoc()['total'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -78,6 +147,7 @@ $lista_guardias = $conn->query("
             border: none;
             border-radius: 15px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
         }
         .main-content {
             padding: 30px;
@@ -93,32 +163,32 @@ $lista_guardias = $conn->query("
             border: none;
         }
         .posicion-badge {
-            font-size: 1.2rem;
-            padding: 8px 12px;
+            font-size: 1rem;
+            padding: 6px 10px;
+        }
+        .lugar-card {
+            border-left: 4px solid #104c75;
+        }
+        .lugar-header {
+            background: linear-gradient(45deg, #104c75, #0d3d5c);
+            color: white;
+        }
+        .guardia-general-card {
+            border: 2px solid #28a745;
+            background: linear-gradient(45deg, #28a745, #20c997);
+        }
+        .collapse-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .collapse-content.show {
+            max-height: 1000px;
         }
     </style>
 </head>
 <body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="../index.php">
-                <i class="fas fa-shield-alt"></i> Sistema RH - Policía Nacional
-            </a>
-            <div class="navbar-nav ms-auto">
-                <div class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                        <i class="fas fa-user"></i> <?php echo $_SESSION['nombre_completo']; ?>
-                    </a>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="#"><i class="fas fa-user-cog"></i> Perfil</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="../logout.php"><i class="fas fa-sign-out-alt"></i> Cerrar Sesión</a></li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </nav>
+    
 
     <div class="container-fluid">
         <div class="row">
@@ -131,80 +201,136 @@ $lista_guardias = $conn->query("
             <div class="col-md-9 col-lg-10">
                 <div class="main-content">
                     <h1 class="page-title">
-                        <i class="fas fa-list-ul"></i> Lista de Guardias
+                        <i class="fas fa-list-ul"></i> Lista de Guardias por Lugares
                     </h1>
 
                     <?php if (isset($mensaje)) echo $mensaje; ?>
 
-                    <!-- Botones de acción -->
-                    <div class="mb-3">
+                    <!-- Botón Generar Guardia General -->
+                    <div class="mb-4">
                         <form method="POST" style="display: inline;">
+                            <input type="hidden" name="action" value="generar_guardia_general">
+                            <button type="submit" class="btn btn-success btn-lg" onclick="return confirm('¿Está seguro de generar la guardia general? Esto seleccionará 5 policías de cada lugar de guardia.')">
+                                <i class="fas fa-users"></i> Generar Guardia General
+                            </button>
+                        </form>
+                        
+                        <form method="POST" style="display: inline; margin-left: 10px;">
                             <input type="hidden" name="action" value="reorganizar">
                             <button type="submit" class="btn btn-info" onclick="return confirm('¿Está seguro de reorganizar la lista de guardias?')">
-                                <i class="fas fa-sync-alt"></i> Reorganizar Lista por Jerarquía y Antigüedad
+                                <i class="fas fa-sync-alt"></i> Reorganizar Lista
                             </button>
                         </form>
                     </div>
 
-                    <!-- Tabla de lista de guardias -->
-                    <div class="card">
-                        <div class="card-header bg-info text-white">
-                            <h5><i class="fas fa-list-ol"></i> Lista de Guardias FIFO (Primero en Entrar, Primero en Salir)</h5>
+                    <!-- Mostrar Guardia General si fue generada -->
+                    <?php if (isset($guardia_general) && !empty($guardia_general)): ?>
+                    <div class="card guardia-general-card mb-4">
+                        <div class="card-header text-white">
+                            <h5><i class="fas fa-star"></i> Guardia General Generada</h5>
                         </div>
                         <div class="card-body">
+                            <div class="row">
+                                <?php foreach ($guardia_general as $lugar_nombre => $policias): ?>
+                                <div class="col-md-6 mb-3">
+                                    <h6 class="text-dark"><i class="fas fa-map-marker-alt"></i> <?php echo $lugar_nombre; ?></h6>
+                                    <ul class="list-group list-group-flush">
+                                        <?php foreach ($policias as $policia): ?>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            <span>
+                                                <strong><?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?></strong><br>
+                                                <small class="text-muted"><?php echo $policia['grado'] . ' - CIN: ' . $policia['cin']; ?></small>
+                                            </span>
+                                            <span class="badge bg-primary posicion-badge">#<?php echo $policia['posicion']; ?></span>
+                                        </li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
+                    <!-- Lugares de Guardias -->
+                    <?php while ($lugar = $lugares_guardias->fetch_assoc()): ?>
+                    <?php 
+                        $policias_lugar = obtenerPoliciasPorLugar($conn, $lugar['id'], 5);
+                        $total_policias = contarPoliciasPorLugar($conn, $lugar['id']);
+                    ?>
+                    <div class="card lugar-card">
+                        <div class="card-header lugar-header d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-0">
+                                    <i class="fas fa-map-marker-alt"></i> <?php echo $lugar['nombre']; ?>
+                                    <span class="badge bg-light text-dark ms-2"><?php echo $total_policias; ?> policías</span>
+                                </h5>
+                                <?php if ($lugar['zona']): ?>
+                                <small class="text-light"><i class="fas fa-location-arrow"></i> Zona: <?php echo $lugar['zona']; ?></small>
+                                <?php endif; ?>
+                            </div>
+                            <?php if ($total_policias > 5): ?>
+                            <button class="btn btn-outline-light btn-sm" type="button" onclick="toggleCollapse('lugar_<?php echo $lugar['id']; ?>')">
+                                <i class="fas fa-eye" id="icon_lugar_<?php echo $lugar['id']; ?>"></i> Ver más
+                            </button>
+                            <?php endif; ?>
+                        </div>
+                        <div class="card-body">
+                            <?php if ($lugar['descripcion']): ?>
+                            <p class="text-muted mb-3"><i class="fas fa-info-circle"></i> <?php echo $lugar['descripcion']; ?></p>
+                            <?php endif; ?>
+                            
                             <div class="table-responsive">
-                                <table class="table table-striped">
+                                <table class="table table-sm">
                                     <thead>
                                         <tr>
-                                            <th>Posición</th>
+                                            <th>Pos.</th>
                                             <th>CIN</th>
                                             <th>Nombre Completo</th>
                                             <th>Grado</th>
-                                            <th>Antigüedad (días)</th>
-                                            <th>Lugar de Guardia</th>
+                                            <th>Antigüedad</th>
                                             <th>Última Guardia</th>
-                                            <th>Disponibilidad</th>
+                                            <th>Estado</th>
                                             <th>Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <?php while ($guardia = $lista_guardias->fetch_assoc()): ?>
-                                        <tr class="<?php echo $guardia['disponibilidad'] == 'NO DISPONIBLE' ? 'table-warning' : ''; ?>">
+                                        <?php while ($policia = $policias_lugar->fetch_assoc()): ?>
+                                        <tr class="<?php echo $policia['disponibilidad'] == 'NO DISPONIBLE' ? 'table-warning' : ''; ?>">
                                             <td>
                                                 <span class="badge bg-primary posicion-badge">
-                                                    #<?php echo $guardia['posicion']; ?>
+                                                    #<?php echo $policia['posicion']; ?>
                                                 </span>
                                             </td>
-                                            <td><?php echo $guardia['cin']; ?></td>
-                                            <td><?php echo $guardia['apellido'] . ', ' . $guardia['nombre']; ?></td>
-                                            <td><?php echo $guardia['grado']; ?></td>
-                                            <td><?php echo number_format($guardia['antiguedad_dias']); ?> días</td>
-                                            <td><?php echo $guardia['lugar_guardia'] ?: 'Sin asignar'; ?></td>
+                                            <td><?php echo $policia['cin']; ?></td>
+                                            <td><?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?></td>
+                                            <td><?php echo $policia['grado']; ?></td>
+                                            <td><?php echo number_format($policia['antiguedad_dias']); ?> días</td>
                                             <td>
-                                                <?php if ($guardia['ultima_guardia_fecha']): ?>
-                                                    <?php echo date('d/m/Y', strtotime($guardia['ultima_guardia_fecha'])); ?>
+                                                <?php if ($policia['ultima_guardia_fecha']): ?>
+                                                    <?php echo date('d/m/Y', strtotime($policia['ultima_guardia_fecha'])); ?>
                                                 <?php else: ?>
                                                     <span class="text-muted">Nunca</span>
                                                 <?php endif; ?>
                                             </td>
                                             <td>
-                                                <span class="badge bg-<?php echo $guardia['disponibilidad'] == 'DISPONIBLE' ? 'success' : 'danger'; ?>">
-                                                    <?php echo $guardia['disponibilidad']; ?>
+                                                <span class="badge bg-<?php echo $policia['disponibilidad'] == 'DISPONIBLE' ? 'success' : 'danger'; ?>">
+                                                    <?php echo $policia['disponibilidad']; ?>
                                                 </span>
                                             </td>
                                             <td>
-                                                <?php if ($guardia['disponibilidad'] == 'DISPONIBLE'): ?>
+                                                <?php if ($policia['disponibilidad'] == 'DISPONIBLE'): ?>
                                                 <form method="POST" style="display: inline;">
                                                     <input type="hidden" name="action" value="rotar">
-                                                    <input type="hidden" name="policia_id" value="<?php echo $guardia['policia_id']; ?>">
-                                                    <button type="submit" class="btn btn-sm btn-outline-warning" 
+                                                    <input type="hidden" name="policia_id" value="<?php echo $policia['policia_id']; ?>">
+                                                    <button type="submit" class="btn btn-sm btn-outline-success" 
                                                             onclick="return confirm('¿Confirma que este policía realizó la guardia?')"
                                                             title="Marcar como guardia realizada">
-                                                        <i class="fas fa-check"></i> Guardia Realizada
+                                                        <i class="fas fa-check"></i>
                                                     </button>
                                                 </form>
                                                 <?php else: ?>
-                                                <span class="text-muted">No disponible</span>
+                                                <span class="text-muted">-</span>
                                                 <?php endif; ?>
                                             </td>
                                         </tr>
@@ -212,22 +338,85 @@ $lista_guardias = $conn->query("
                                     </tbody>
                                 </table>
                             </div>
+                            
+                            <!-- Contenido colapsable para ver más policías -->
+                            <?php if ($total_policias > 5): ?>
+                            <div id="lugar_<?php echo $lugar['id']; ?>" class="collapse-content">
+                                <hr>
+                                <h6 class="text-muted">Policías adicionales:</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <tbody>
+                                            <?php 
+                                            // Obtener el resto de policías
+                                            $policias_adicionales = obtenerPoliciasPorLugar($conn, $lugar['id'], 1000);
+                                            $contador = 0;
+                                            while ($policia = $policias_adicionales->fetch_assoc()): 
+                                                $contador++;
+                                                if ($contador <= 5) continue; // Saltar los primeros 5
+                                            ?>
+                                            <tr class="<?php echo $policia['disponibilidad'] == 'NO DISPONIBLE' ? 'table-warning' : ''; ?>">
+                                                <td>
+                                                    <span class="badge bg-secondary posicion-badge">
+                                                        #<?php echo $policia['posicion']; ?>
+                                                    </span>
+                                                </td>
+                                                <td><?php echo $policia['cin']; ?></td>
+                                                <td><?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?></td>
+                                                <td><?php echo $policia['grado']; ?></td>
+                                                <td><?php echo number_format($policia['antiguedad_dias']); ?> días</td>
+                                                <td>
+                                                    <?php if ($policia['ultima_guardia_fecha']): ?>
+                                                        <?php echo date('d/m/Y', strtotime($policia['ultima_guardia_fecha'])); ?>
+                                                    <?php else: ?>
+                                                        <span class="text-muted">Nunca</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-<?php echo $policia['disponibilidad'] == 'DISPONIBLE' ? 'success' : 'danger'; ?>">
+                                                        <?php echo $policia['disponibilidad']; ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <?php if ($policia['disponibilidad'] == 'DISPONIBLE'): ?>
+                                                    <form method="POST" style="display: inline;">
+                                                        <input type="hidden" name="action" value="rotar">
+                                                        <input type="hidden" name="policia_id" value="<?php echo $policia['policia_id']; ?>">
+                                                        <button type="submit" class="btn btn-sm btn-outline-success" 
+                                                                onclick="return confirm('¿Confirma que este policía realizó la guardia?')"
+                                                                title="Marcar como guardia realizada">
+                                                            <i class="fas fa-check"></i>
+                                                        </button>
+                                                    </form>
+                                                    <?php else: ?>
+                                                    <span class="text-muted">-</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                            </tr>
+                                            <?php endwhile; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <?php endif; ?>
                         </div>
                     </div>
+                    <?php endwhile; ?>
 
                     <!-- Información adicional -->
                     <div class="row mt-4">
                         <div class="col-md-12">
                             <div class="card">
                                 <div class="card-header bg-secondary text-white">
-                                    <h6><i class="fas fa-info-circle"></i> Información del Sistema FIFO</h6>
+                                    <h6><i class="fas fa-info-circle"></i> Información del Sistema</h6>
                                 </div>
                                 <div class="card-body">
                                     <ul class="mb-0">
-                                        <li><strong>Orden por Jerarquía:</strong> Los policías de mayor jerarquía tienen prioridad en la lista.</li>
-                                        <li><strong>Orden por Antigüedad:</strong> En caso de igual jerarquía, se ordena por antigüedad (más antiguo primero).</li>
-                                        <li><strong>Rotación Automática:</strong> Al marcar una guardia como realizada, el policía se mueve al final de la lista.</li>
-                                        <li><strong>Disponibilidad:</strong> Solo los policías disponibles (sin ausencias aprobadas) pueden realizar guardias.</li>
+                                        <li><strong>Organización por Lugares:</strong> Los policías están organizados por sus lugares de guardia asignados.</li>
+                                        <li><strong>Límite de Visualización:</strong> Se muestran máximo 5 policías por lugar inicialmente.</li>
+                                        <li><strong>Guardia General:</strong> Selecciona automáticamente 5 policías disponibles de cada lugar de guardia.</li>
+                                        <li><strong>Orden FIFO:</strong> Mantiene el orden por jerarquía y antigüedad dentro de cada lugar.</li>
+                                        <li><strong>Disponibilidad:</strong> Solo los policías disponibles pueden realizar guardias.</li>
                                     </ul>
                                 </div>
                             </div>
@@ -239,5 +428,21 @@ $lista_guardias = $conn->query("
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function toggleCollapse(elementId) {
+            const element = document.getElementById(elementId);
+            const icon = document.getElementById('icon_' + elementId);
+            
+            if (element.classList.contains('show')) {
+                element.classList.remove('show');
+                icon.className = 'fas fa-eye';
+                icon.parentElement.innerHTML = '<i class="fas fa-eye"></i> Ver más';
+            } else {
+                element.classList.add('show');
+                icon.className = 'fas fa-eye-slash';
+                icon.parentElement.innerHTML = '<i class="fas fa-eye-slash"></i> Ver menos';
+            }
+        }
+    </script>
 </body>
 </html>

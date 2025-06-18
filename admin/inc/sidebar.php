@@ -38,7 +38,7 @@ if (isset($_SESSION['usuario_id'])) {
         <nav class="sidebar-nav">
             <ul class="nav-menu">
                 <!-- Dashboard -->
-                <li class="nav-item">
+                <li class="nav-item <?php echo (isset($_GET['page']) && $_GET['page'] === 'dashboard') ? 'active' : ''; ?>">
                     <a href="/SistemaRH/admin/index.php" class="nav-link">
                         <div class="nav-icon">
                             <i class="fas fa-tachometer-alt"></i>
@@ -47,8 +47,7 @@ if (isset($_SESSION['usuario_id'])) {
                     </a>
                 </li>
 
-              
-<li class="nav-item has-submenu">
+                <li class="nav-item has-submenu <?php echo (isset($_GET['page']) && $_GET['page'] === 'policias') ? 'active' : ''; ?>">
                     <a href="#" class="nav-link">
                         <div class="nav-icon">
                             <i class="fas fa-users"></i>
@@ -91,7 +90,7 @@ if (isset($_SESSION['usuario_id'])) {
                 </li>
 
                 <!-- Programar Servicios -->
-                <li class="nav-item">
+                <li class="nav-item <?php echo (isset($_GET['page']) && $_GET['page'] === 'servicios') ? 'active' : ''; ?>">
                     <a href="/SistemaRH/admin/servicios/index.php" class="nav-link">
                         <div class="nav-icon">
                             <i class="fas fa-calendar-alt"></i>
@@ -101,7 +100,7 @@ if (isset($_SESSION['usuario_id'])) {
                 </li>
 
                 <!-- Lista de Guardias -->
-                <li class="nav-item">
+                <li class="nav-item <?php echo (isset($_GET['page']) && $_GET['page'] === 'guardias') ? 'active' : ''; ?>">
                     <a href="/SistemaRH/admin/guardias/index.php" class="nav-link">
                         <div class="nav-icon">
                             <i class="fas fa-list-ul"></i>
@@ -111,7 +110,7 @@ if (isset($_SESSION['usuario_id'])) {
                 </li>
 
                 <!-- Gestión de Ausencias -->
-                <li class="nav-item">
+                <li class="nav-item <?php echo (isset($_GET['page']) && $_GET['page'] === 'ausencias') ? 'active' : ''; ?>">
                     <a href="/SistemaRH/admin/ausencias/index.php" class="nav-link">
                         <div class="nav-icon">
                             <i class="fas fa-user-times"></i>
@@ -121,7 +120,7 @@ if (isset($_SESSION['usuario_id'])) {
                 </li>
 
                 <!-- Reportes -->
-                <li class="nav-item">
+                <li class="nav-item <?php echo (isset($_GET['page']) && $_GET['page'] === 'reportes') ? 'active' : ''; ?>">
                     <a href="/SistemaRH/admin/reportes/index.php" class="nav-link">
                         <div class="nav-icon">
                             <i class="fas fa-chart-bar"></i>
@@ -143,12 +142,6 @@ if (isset($_SESSION['usuario_id'])) {
                         <i class="fas fa-chevron-right submenu-arrow"></i>
                     </a>
                     <ul class="submenu">
-                        <li>
-                            <a href="#" id="darkModeButton" class="submenu-link">
-                                <i class="fas fa-moon"></i>
-                                <span id="darkModeText">Modo Oscuro</span>
-                            </a>
-                        </li>
                         <li>
                             <a href="#" class="submenu-link">
                                 <i class="fas fa-user-cog"></i>
@@ -176,8 +169,7 @@ if (isset($_SESSION['usuario_id'])) {
 /* Variables CSS para colores y espaciado */
 :root {
     --sidebar-bg: linear-gradient(135deg, #104c75 0%, #0d3d5c 100%);
-    --sidebar-bg-dark: linear-gradient(135deg, #104c75 0%, #0d3d5c 100%);
-    --sidebar-width: 100%; /* Cambiado de 280px a 100% */
+    --sidebar-width: 100%;
     --sidebar-collapsed-width: 70px;
     --primary-color: #104c75;
     --secondary-color: #0d3d5c;
@@ -191,23 +183,64 @@ if (isset($_SESSION['usuario_id'])) {
 
 /* Sidebar principal */
 .sidebar.modern-sidebar {
-    width: 100%; /* Asegurar que ocupe todo el ancho del contenedor */
+    width: 250px; /* Ancho fijo específico */
     background: var(--sidebar-bg);
-    min-height: 100vh; /* Cambiado para ocupar toda la altura */
+    min-height: 100vh;
+    height: 100vh;
     color: var(--text-light);
-    position: relative;
-    overflow: hidden;
+    position: fixed;
+    top: 0;
+    left: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
     box-shadow: var(--shadow);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    margin: 0; /* Eliminar márgenes */
-    padding: 0; /* Eliminar padding externo */
+    margin: 0;
+    padding: 0;
+    z-index: 1000;
 }
 
 /* Ajuste para el contenedor del sidebar */
 .col-md-3.col-lg-2.px-0 {
     padding-left: 0 !important;
-    padding-right: 0 !important;
     margin: 0;
+    position: relative;
+    width: 250px; /* Mismo ancho que el sidebar */
+}
+
+/* Ajustar el contenido principal para compensar el sidebar fijo */
+.col-md-9.col-lg-10 {
+    margin-left: 250px; /* Mismo ancho que el sidebar */
+    padding-left: 15px;
+    min-height: 100vh;
+    width: calc(100% - 250px);
+}
+
+@media (min-width: 992px) {
+    .col-md-9.col-lg-10 {
+        margin-left: 250px;
+        width: calc(100% - 250px);
+    }
+}
+
+/* Para pantallas más pequeñas */
+@media (max-width: 768px) {
+    .sidebar.modern-sidebar {
+        position: fixed;
+        left: -100%;
+        top: 0;
+        width: 280px;
+        z-index: 1000;
+        transition: left 0.3s ease;
+    }
+    
+    .sidebar.modern-sidebar.show {
+        left: 0;
+    }
+    
+    .col-md-9.col-lg-10 {
+        margin-left: 0;
+    }
 }
 
 .sidebar.modern-sidebar::before {
@@ -457,22 +490,6 @@ if (isset($_SESSION['usuario_id'])) {
     color: #ff5252 !important;
 }
 
-/* Modo oscuro */
-body.dark-mode {
-    background-color: #1a1a1a;
-    color: #fff;
-}
-
-body.dark-mode .sidebar.modern-sidebar {
-    background: var(--sidebar-bg-dark);
-}
-
-body.dark-mode .card {
-    background-color: #2d2d2d;
-    border-color: #404040;
-    color: #fff;
-}
-
 /* Responsive */
 @media (max-width: 768px) {
     .sidebar.modern-sidebar {
@@ -554,14 +571,11 @@ body.dark-mode .card {
 .nav-item:nth-child(8) { animation-delay: 0.8s; }
 </style>
 
-<!-- JavaScript mejorado para el funcionamiento del sidebar -->
+<!-- JavaScript para el funcionamiento del sidebar -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Inicialización del sidebar
     initSidebar();
-    
-    // Inicialización del modo oscuro
-    initDarkMode();
     
     // Marcar elemento activo basado en la URL
     setActiveMenuItem();
@@ -589,53 +603,6 @@ function initSidebar() {
             item.classList.toggle('active');
         });
     });
-}
-
-function initDarkMode() {
-    const darkModeButton = document.getElementById('darkModeButton');
-    const darkModeText = document.getElementById('darkModeText');
-    
-    if (!darkModeButton || !darkModeText) return;
-    
-    // Verificar preferencia guardada
-    const isDarkMode = localStorage.getItem('darkMode') === 'true';
-    
-    if (isDarkMode) {
-        document.body.classList.add('dark-mode');
-        darkModeText.textContent = 'Modo Claro';
-        updateDarkModeIcon(true);
-    }
-    
-    darkModeButton.addEventListener('click', function(e) {
-        e.preventDefault();
-        
-        const isCurrentlyDark = document.body.classList.contains('dark-mode');
-        
-        if (isCurrentlyDark) {
-            document.body.classList.remove('dark-mode');
-            darkModeText.textContent = 'Modo Oscuro';
-            localStorage.setItem('darkMode', 'false');
-            updateDarkModeIcon(false);
-        } else {
-            document.body.classList.add('dark-mode');
-            darkModeText.textContent = 'Modo Claro';
-            localStorage.setItem('darkMode', 'true');
-            updateDarkModeIcon(true);
-        }
-        
-        // Animación suave
-        document.body.style.transition = 'all 0.3s ease';
-        setTimeout(() => {
-            document.body.style.transition = '';
-        }, 300);
-    });
-}
-
-function updateDarkModeIcon(isDark) {
-    const icon = document.querySelector('#darkModeButton i');
-    if (icon) {
-        icon.className = isDark ? 'fas fa-sun' : 'fas fa-moon';
-    }
 }
 
 function setActiveMenuItem() {

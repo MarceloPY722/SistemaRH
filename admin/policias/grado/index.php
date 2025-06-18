@@ -202,8 +202,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         </div>
                                         <div class="col-md-4 mb-3">
                                             <label for="nivel_grado" class="form-label">Nivel Jerárquico *</label>
-                                            <input type="number" class="form-control" id="nivel_grado" name="nivel_grado" required min="1" max="20" placeholder="1-20 (1=más alto, 20=más bajo)">
-                                            <div class="form-text">Nivel jerárquico del grado (1 = más alto, 20 = más bajo)</div>
+                                            <input type="number" class="form-control" id="nivel_grado" name="nivel_grado" required min="1" max="15" placeholder="1-15 (1=más alto, 15=más bajo)">
+                                            <div class="form-text">Nivel jerárquico del grado (1 = más alto, 15 = más bajo)</div>
                                         </div>
                                         <div class="col-md-4 mb-3">
                                             <label for="abreviatura_grado" class="form-label">Abreviatura</label>
@@ -303,8 +303,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                         <div class="mb-3">
                             <label for="edit_nivel_jerarquia" class="form-label">Nivel Jerárquico *</label>
-                            <input type="number" class="form-control" id="edit_nivel_jerarquia" name="nivel_jerarquia" required min="1" max="20">
-                            <div class="form-text">Nivel jerárquico del grado (1 = más alto, 20 = más bajo)</div>
+                            <input type="number" class="form-control" id="edit_nivel_jerarquia" name="nivel_jerarquia" required min="1" max="15">
+                            <div class="form-text">Nivel jerárquico del grado (1 = más alto, 15 = más bajo)</div>
                         </div>
                         <div class="mb-3">
                             <label for="edit_abreviatura" class="form-label">Abreviatura</label>

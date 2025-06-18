@@ -8,94 +8,56 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
-// Obtener datos para los formularios
+// Obtener grados, especialidades y lugares de guardia para los selectores del formulario
 $grados = $conn->query("SELECT * FROM grados ORDER BY nivel_jerarquia ASC");
 $especialidades = $conn->query("SELECT * FROM especialidades ORDER BY nombre ASC");
 $lugares_guardias = $conn->query("SELECT * FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
 
 $mensaje = "";
 
-// Procesar formulario
-if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
+// Procesar formulario de nuevo policía
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'crear') {
     $nombre = trim($_POST['nombre']);
     $apellido = trim($_POST['apellido']);
     $cin = trim($_POST['cin']);
     $grado_id = $_POST['grado_id'];
-    $especialidad_id = $_POST['especialidad_id'] ?: null;
+    $especialidad_id = !empty($_POST['especialidad_id']) ? $_POST['especialidad_id'] : null;
     $cargo = trim($_POST['cargo']);
     $comisionamiento = trim($_POST['comisionamiento']);
     $telefono = trim($_POST['telefono']);
     $region = $_POST['region'];
-    $lugar_guardia_id = $_POST['lugar_guardia_id'] ?: null;
+    $lugar_guardia_id = !empty($_POST['lugar_guardia_id']) ? $_POST['lugar_guardia_id'] : null;
     $fecha_ingreso = $_POST['fecha_ingreso'];
     $observaciones = trim($_POST['observaciones']);
-    
-    // Validar campos obligatorios
-    if (empty($nombre) || empty($apellido) || empty($cin) || empty($grado_id) || empty($region) || empty($fecha_ingreso)) {
-        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Todos los campos marcados con * son obligatorios</div>";
+
+    $sql = "INSERT INTO policias (nombre, apellido, cin, grado_id, especialidad_id, cargo, comisionamiento, telefono, region, lugar_guardia_id, fecha_ingreso, observaciones) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $stmt = $conn->prepare($sql);
+    // Ajustar "issssiisssis" según los tipos de datos correctos. `especialidad_id` y `lugar_guardia_id` pueden ser NULL.
+    $stmt->bind_param("sssiiisssiss", $nombre, $apellido, $cin, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region, $lugar_guardia_id, $fecha_ingreso, $observaciones);
+
+    if ($stmt->execute()) {
+        $mensaje = "<div class='alert alert-success'>Policía registrado exitosamente.</div>";
+        // Limpiar los campos del POST para evitar re-envío o limpiar el formulario
+        $_POST = array(); 
+    } else {
+        $mensaje = "<div class='alert alert-danger'>Error al registrar policía: " . $conn->error . "</div>";
     }
-    // Validar formato de fecha
-    // Reemplazar la validación de fecha existente (líneas 38-42) con:
-    elseif (empty($fecha_ingreso) || strlen($fecha_ingreso) !== 10 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha_ingreso)) {
-        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> La fecha de ingreso debe estar en formato válido (YYYY-MM-DD)</div>";
-    }
-    // Validar que sea una fecha real
-    elseif (!checkdate(substr($fecha_ingreso, 5, 2), substr($fecha_ingreso, 8, 2), substr($fecha_ingreso, 0, 4))) {
-        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> La fecha ingresada no es válida</div>";
-    }
-    // Validar que la fecha no sea futura
-    elseif (strtotime($fecha_ingreso) > time()) {
-        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> La fecha de ingreso no puede ser futura</div>";
-    }
-    else {
-        // Validar CIN único
-        $check_cin = $conn->prepare("SELECT id FROM policias WHERE cin = ? AND activo = 1");
-        $check_cin->bind_param("s", $cin);
-        $check_cin->execute();
-        $result = $check_cin->get_result();
-        
-        if ($result->num_rows > 0) {
-            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> El CIN ya está registrado en el sistema</div>";
-        } else {
-            $sql = "INSERT INTO policias (nombre, apellido, cin, grado_id, especialidad_id, cargo, comisionamiento, telefono, region, lugar_guardia_id, fecha_ingreso, observaciones) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("sssiisisssis", $nombre, $apellido, $cin, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region, $lugar_guardia_id, $fecha_ingreso, $observaciones);
-            
-            if ($stmt->execute()) {
-                $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle'></i> Policía registrado exitosamente</div>";
-                // Limpiar formulario
-                $_POST = array();
-            } else {
-                $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al registrar policía: " . $conn->error . "</div>";
-            }
-        }
-    }
+    $stmt->close();
 }
+// $conn->close(); // <-- REMOVE THIS LINE
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agregar Policía - Sistema RH</title>
+    <title>Agregar Nuevo Policía - Sistema RH</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body {
             background-color: #f8f9fa;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        .navbar {
-            background: linear-gradient(45deg, #104c75, #0d3d5c) !important;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .btn-primary {
-            background: linear-gradient(45deg, #104c75, #0d3d5c);
-            border: none;
-        }
-        .form-control:focus {
-            border-color: #104c75;
-            box-shadow: 0 0 0 0.2rem rgba(16, 76, 117, 0.25);
         }
         .card {
             border: none;
@@ -111,32 +73,11 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
             margin-bottom: 30px;
         }
         .form-label {
-            font-weight: 600;
-            color: #495057;
+            font-weight: 500;
         }
-        .btn-primary {
-            background: linear-gradient(45deg, #667eea, #764ba2);
-            border: none;
-            border-radius: 10px;
-            padding: 12px 30px;
-            font-weight: 600;
-        }
-        .btn-secondary {
-            border-radius: 10px;
-            padding: 12px 30px;
-            font-weight: 600;
-        }
-        .form-control, .form-select {
-            border-radius: 10px;
-            border: 2px solid #e9ecef;
-            padding: 12px 15px;
-        }
-        .form-control:focus, .form-select:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
-        }
-        .required {
-            color: #dc3545;
+        .required-field::after {
+            content: " *";
+            color: red;
         }
     </style>
 </head>
@@ -144,167 +85,131 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
     <div class="container-fluid">
         <div class="row">
             <?php 
-            $_GET['page'] = 'policias';
+            // Establecer la página activa para el sidebar
+            $_GET['page'] = 'policias_agregar'; // Puedes usar esto para resaltar el item del menú
             include '../inc/sidebar.php'; 
             ?>
 
             <!-- Main Content -->
             <div class="col-md-9 col-lg-10">
                 <div class="main-content">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h1 class="page-title"><i class="fas fa-user-plus"></i> Agregar Nuevo Policía</h1>
-                        <a href="index.php" class="btn btn-secondary">
-                            <i class="fas fa-arrow-left"></i> Volver a la Lista
-                        </a>
-                    </div>
+                    <h1 class="page-title">
+                        <i class="fas fa-user-plus"></i> Agregar Nuevo Policía
+                    </h1>
 
-                    <?php echo $mensaje; ?>
+                    <?php if (!empty($mensaje)) echo $mensaje; ?>
 
                     <div class="card">
                         <div class="card-header bg-primary text-white">
-                            <h5 class="mb-0"><i class="fas fa-user-plus"></i> Información del Policía</h5>
+                            <h5><i class="fas fa-id-card"></i> Datos del Policía</h5>
                         </div>
                         <div class="card-body">
-                            <form method="POST" action="" id="formAgregar">
+                            <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>">
                                 <input type="hidden" name="action" value="crear">
                                 
                                 <div class="row">
-                                    <!-- Información Personal -->
-                                    <div class="col-md-6">
-                                        <h6 class="text-primary mb-3"><i class="fas fa-user"></i> Datos Personales</h6>
-                                        
-                                        <div class="mb-3">
-                                            <label for="nombre" class="form-label">Nombre <span class="required">*</span></label>
-                                            <input type="text" class="form-control" id="nombre" name="nombre" 
-                                                   value="<?php echo isset($_POST['nombre']) ? htmlspecialchars($_POST['nombre']) : ''; ?>" required>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="apellido" class="form-label">Apellido <span class="required">*</span></label>
-                                            <input type="text" class="form-control" id="apellido" name="apellido" 
-                                                   value="<?php echo isset($_POST['apellido']) ? htmlspecialchars($_POST['apellido']) : ''; ?>" required>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="cin" class="form-label">CIN (Cédula) <span class="required">*</span></label>
-                                            <input type="text" class="form-control" id="cin" name="cin" 
-                                                   value="<?php echo isset($_POST['cin']) ? htmlspecialchars($_POST['cin']) : ''; ?>" 
-                                                   pattern="[0-9]{1,8}" title="Solo números, máximo 8 dígitos" required>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="telefono" class="form-label">Teléfono</label>
-                                            <input type="tel" class="form-control" id="telefono" name="telefono" 
-                                                   value="<?php echo isset($_POST['telefono']) ? htmlspecialchars($_POST['telefono']) : ''; ?>">
-                                        </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="nombre" class="form-label required-field">Nombre</label>
+                                        <input type="text" class="form-control" id="nombre" name="nombre" value="<?php echo isset($_POST['nombre']) ? htmlspecialchars($_POST['nombre']) : ''; ?>" required>
                                     </div>
-                                    
-                                    <!-- Información Profesional -->
-                                    <div class="col-md-6">
-                                        <h6 class="text-primary mb-3"><i class="fas fa-badge"></i> Información Profesional</h6>
-                                        
-                                        <div class="mb-3">
-                                            <label for="grado_id" class="form-label">Grado <span class="required">*</span></label>
-                                            <select class="form-select" id="grado_id" name="grado_id" required>
-                                                <option value="">Seleccionar grado...</option>
-                                                <?php while ($grado = $grados->fetch_assoc()): ?>
-                                                    <option value="<?php echo $grado['id']; ?>" 
-                                                            <?php echo (isset($_POST['grado_id']) && $_POST['grado_id'] == $grado['id']) ? 'selected' : ''; ?>>
-                                                        <?php echo htmlspecialchars($grado['nombre']); ?>
-                                                    </option>
-                                                <?php endwhile; ?>
-                                            </select>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="especialidad_id" class="form-label">Especialidad</label>
-                                            <select class="form-select" id="especialidad_id" name="especialidad_id">
-                                                <option value="">Sin especialidad...</option>
-                                                <?php while ($especialidad = $especialidades->fetch_assoc()): ?>
-                                                    <option value="<?php echo $especialidad['id']; ?>" 
-                                                            <?php echo (isset($_POST['especialidad_id']) && $_POST['especialidad_id'] == $especialidad['id']) ? 'selected' : ''; ?>>
-                                                        <?php echo htmlspecialchars($especialidad['nombre']); ?>
-                                                    </option>
-                                                <?php endwhile; ?>
-                                            </select>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="cargo" class="form-label">Cargo</label>
-                                            <input type="text" class="form-control" id="cargo" name="cargo" 
-                                                   value="<?php echo isset($_POST['cargo']) ? htmlspecialchars($_POST['cargo']) : ''; ?>">
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="fecha_ingreso" class="form-label">Fecha de Ingreso <span class="required">*</span></label>
-                                            <input type="date" class="form-control" id="fecha_ingreso" name="fecha_ingreso" 
-                                                   value="<?php echo isset($_POST['fecha_ingreso']) ? $_POST['fecha_ingreso'] : ''; ?>" 
-                                                   max="<?php echo date('Y-m-d'); ?>" required>
-                                            <div class="form-text">Formato: YYYY-MM-DD (no puede ser fecha futura)</div>
-                                        </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="apellido" class="form-label required-field">Apellido</label>
+                                        <input type="text" class="form-control" id="apellido" name="apellido" value="<?php echo isset($_POST['apellido']) ? htmlspecialchars($_POST['apellido']) : ''; ?>" required>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="cin" class="form-label required-field">CIN</label>
+                                        <input type="text" class="form-control" id="cin" name="cin" value="<?php echo isset($_POST['cin']) ? htmlspecialchars($_POST['cin']) : ''; ?>" required>
                                     </div>
                                 </div>
-                                
+
                                 <div class="row">
-                                    <!-- Asignación y Ubicación -->
-                                    <div class="col-md-6">
-                                        <h6 class="text-primary mb-3"><i class="fas fa-map-marker-alt"></i> Asignación</h6>
-                                        
-                                        <div class="mb-3">
-                                            <label for="region" class="form-label">Región <span class="required">*</span></label>
-                                            <select class="form-select" id="region" name="region" required>
-                                                <option value="">Seleccionar región...</option>
-                                                <option value="CENTRAL" <?php echo (isset($_POST['region']) && $_POST['region'] == 'CENTRAL') ? 'selected' : ''; ?>>Central</option>
-                                                <option value="REGIONAL" <?php echo (isset($_POST['region']) && $_POST['region'] == 'REGIONAL') ? 'selected' : ''; ?>>Regional</option>
-                                            </select>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="lugar_guardia_id" class="form-label">Lugar de Guardia</label>
-                                            <select class="form-select" id="lugar_guardia_id" name="lugar_guardia_id">
-                                                <option value="">Sin asignar...</option>
-                                                <?php while ($lugar = $lugares_guardias->fetch_assoc()): ?>
-                                                    <option value="<?php echo $lugar['id']; ?>" 
-                                                            <?php echo (isset($_POST['lugar_guardia_id']) && $_POST['lugar_guardia_id'] == $lugar['id']) ? 'selected' : ''; ?>>
-                                                        <?php echo htmlspecialchars($lugar['nombre']); ?>
-                                                    </option>
-                                                <?php endwhile; ?>
-                                            </select>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="comisionamiento" class="form-label">Comisionamiento</label>
-                                            <input type="text" class="form-control" id="comisionamiento" name="comisionamiento" 
-                                                   value="<?php echo isset($_POST['comisionamiento']) ? htmlspecialchars($_POST['comisionamiento']) : ''; ?>">
-                                        </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="grado_id" class="form-label required-field">Grado</label>
+                                        <select class="form-select" id="grado_id" name="grado_id" required>
+                                            <option value="">Seleccionar grado...</option>
+                                            <?php 
+                                            if ($grados->num_rows > 0) {
+                                                while ($grado = $grados->fetch_assoc()): 
+                                            ?>
+                                            <option value="<?php echo $grado['id']; ?>" <?php echo (isset($_POST['grado_id']) && $_POST['grado_id'] == $grado['id']) ? 'selected' : ''; ?>><?php echo htmlspecialchars($grado['nombre']); ?></option>
+                                            <?php 
+                                                endwhile; 
+                                                $grados->data_seek(0); // Reset pointer para posible uso futuro
+                                            }
+                                            ?>
+                                        </select>
                                     </div>
-                                    
-                                    <!-- Observaciones -->
-                                    <div class="col-md-6">
-                                        <h6 class="text-primary mb-3"><i class="fas fa-sticky-note"></i> Observaciones</h6>
-                                        
-                                        <div class="mb-3">
-                                            <label for="observaciones" class="form-label">Observaciones</label>
-                                            <textarea class="form-control" id="observaciones" name="observaciones" rows="6" 
-                                                      placeholder="Información adicional sobre el policía..."><?php echo isset($_POST['observaciones']) ? htmlspecialchars($_POST['observaciones']) : ''; ?></textarea>
-                                        </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="especialidad_id" class="form-label">Especialidad</label>
+                                        <select class="form-select" id="especialidad_id" name="especialidad_id">
+                                            <option value="">Seleccionar especialidad...</option>
+                                            <?php 
+                                            if ($especialidades->num_rows > 0) {
+                                                while ($especialidad = $especialidades->fetch_assoc()): 
+                                            ?>
+                                            <option value="<?php echo $especialidad['id']; ?>" <?php echo (isset($_POST['especialidad_id']) && $_POST['especialidad_id'] == $especialidad['id']) ? 'selected' : ''; ?>><?php echo htmlspecialchars($especialidad['nombre']); ?></option>
+                                            <?php 
+                                                endwhile; 
+                                                $especialidades->data_seek(0);
+                                            }
+                                            ?>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="cargo" class="form-label">Cargo</label>
+                                        <input type="text" class="form-control" id="cargo" name="cargo" value="<?php echo isset($_POST['cargo']) ? htmlspecialchars($_POST['cargo']) : ''; ?>">
                                     </div>
                                 </div>
-                                
-                                <div class="row mt-4">
-                                    <div class="col-12">
-                                        <div class="d-flex gap-3">
-                                            <button type="submit" class="btn btn-primary">
-                                                <i class="fas fa-save"></i> Guardar Policía
-                                            </button>
-                                            <button type="reset" class="btn btn-outline-secondary">
-                                                <i class="fas fa-undo"></i> Limpiar Formulario
-                                            </button>
-                                            <a href="index.php" class="btn btn-outline-danger">
-                                                <i class="fas fa-times"></i> Cancelar
-                                            </a>
-                                        </div>
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="comisionamiento" class="form-label">Comisionamiento</label>
+                                        <input type="text" class="form-control" id="comisionamiento" name="comisionamiento" value="<?php echo isset($_POST['comisionamiento']) ? htmlspecialchars($_POST['comisionamiento']) : ''; ?>">
                                     </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="telefono" class="form-label">Teléfono</label>
+                                        <input type="text" class="form-control" id="telefono" name="telefono" value="<?php echo isset($_POST['telefono']) ? htmlspecialchars($_POST['telefono']) : ''; ?>">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="region" class="form-label required-field">Región</label>
+                                        <select class="form-select" id="region" name="region" required>
+                                            <option value="CENTRAL" <?php echo (isset($_POST['region']) && $_POST['region'] == 'CENTRAL') ? 'selected' : ''; ?>>Central</option>
+                                            <option value="REGIONAL" <?php echo (isset($_POST['region']) && $_POST['region'] == 'REGIONAL') ? 'selected' : ''; ?>>Regional</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="lugar_guardia_id" class="form-label">Lugar de Guardia Asignado</label>
+                                        <select class="form-select" id="lugar_guardia_id" name="lugar_guardia_id">
+                                            <option value="">Seleccionar lugar...</option>
+                                            <?php 
+                                            if ($lugares_guardias->num_rows > 0) {
+                                                while ($lugar = $lugares_guardias->fetch_assoc()): 
+                                            ?>
+                                            <option value="<?php echo $lugar['id']; ?>" <?php echo (isset($_POST['lugar_guardia_id']) && $_POST['lugar_guardia_id'] == $lugar['id']) ? 'selected' : ''; ?>><?php echo htmlspecialchars($lugar['nombre']); ?></option>
+                                            <?php 
+                                                endwhile; 
+                                                $lugares_guardias->data_seek(0);
+                                            }
+                                            ?>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="fecha_ingreso" class="form-label required-field">Fecha de Ingreso</label>
+                                        <input type="date" class="form-control" id="fecha_ingreso" name="fecha_ingreso" value="<?php echo isset($_POST['fecha_ingreso']) ? htmlspecialchars($_POST['fecha_ingreso']) : ''; ?>" required>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="observaciones" class="form-label">Observaciones</label>
+                                    <textarea class="form-control" id="observaciones" name="observaciones" rows="3"><?php echo isset($_POST['observaciones']) ? htmlspecialchars($_POST['observaciones']) : ''; ?></textarea>
+                                </div>
+
+                                <div class="mt-4">
+                                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Registrar Policía</button>
+                                    <a href="index.php" class="btn btn-secondary"><i class="fas fa-times"></i> Cancelar</a>
                                 </div>
                             </form>
                         </div>
@@ -316,64 +221,20 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Validación del formulario
-        document.getElementById('formAgregar').addEventListener('submit', function(e) {
-            const cin = document.getElementById('cin').value;
-            const nombre = document.getElementById('nombre').value;
-            const apellido = document.getElementById('apellido').value;
-            
-            if (cin.length < 6 || cin.length > 8) {
-                e.preventDefault();
-                alert('El CIN debe tener entre 6 y 8 dígitos');
-                return false;
-            }
-            
-            if (nombre.length < 2 || apellido.length < 2) {
-                e.preventDefault();
-                alert('El nombre y apellido deben tener al menos 2 caracteres');
-                return false;
-            }
+        // Example: Toggle submenu for sidebar (if you add such functionality)
+        document.querySelectorAll('.sidebar .has-submenu > a').forEach(item => {
+            item.addEventListener('click', event => {
+                event.preventDefault();
+                let submenu = item.nextElementSibling;
+                if (submenu) {
+                    submenu.style.display = submenu.style.display === 'block' ? 'none' : 'block';
+                    item.querySelector('.submenu-arrow').classList.toggle('fa-chevron-down');
+                }
+            });
         });
-        
-        // Formatear CIN solo números
-        document.getElementById('cin').addEventListener('input', function(e) {
-            this.value = this.value.replace(/[^0-9]/g, '');
-        });
-    </script>
-    // Agregar antes del cierre de </body>
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const fechaIngresoInput = document.getElementById('fecha_ingreso');
-        const form = document.querySelector('form');
-        
-        // Validación en tiempo real
-        fechaIngresoInput.addEventListener('change', function() {
-            const fecha = this.value;
-            const fechaRegex = /^\d{4}-\d{2}-\d{2}$/;
-            
-            if (fecha && !fechaRegex.test(fecha)) {
-                this.setCustomValidity('La fecha debe estar en formato YYYY-MM-DD');
-                this.reportValidity();
-            } else if (fecha && new Date(fecha) > new Date()) {
-                this.setCustomValidity('La fecha no puede ser futura');
-                this.reportValidity();
-            } else {
-                this.setCustomValidity('');
-            }
-        });
-        
-        // Validación antes del envío
-        form.addEventListener('submit', function(e) {
-            const fecha = fechaIngresoInput.value;
-            
-            if (!fecha || fecha.length !== 10 || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-                e.preventDefault();
-                alert('Por favor ingrese una fecha válida en formato YYYY-MM-DD');
-                fechaIngresoInput.focus();
-                return false;
-            }
-        });
-    });
     </script>
 </body>
 </html>
+<?php
+$conn->close(); // <-- ADD THIS LINE HERE, AT THE VERY END
+?>
