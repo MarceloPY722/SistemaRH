@@ -8,15 +8,37 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
-// Obtener tipos de ausencias y policías
+// AJAX para búsqueda de policías
+if (isset($_GET['buscar_policia'])) {
+    $termino = '%' . $_GET['buscar_policia'] . '%';
+    $stmt = $conn->prepare("
+        SELECT p.id, p.nombre, p.apellido, p.cin, g.nombre as grado
+        FROM policias p
+        JOIN grados g ON p.grado_id = g.id
+        WHERE p.activo = 1 
+        AND (p.nombre LIKE ? OR p.apellido LIKE ? OR p.cin LIKE ?)
+        ORDER BY p.apellido ASC
+        LIMIT 10
+    ");
+    $stmt->bind_param("sss", $termino, $termino, $termino);
+    $stmt->execute();
+    $resultado = $stmt->get_result();
+    
+    $policias = [];
+    while ($policia = $resultado->fetch_assoc()) {
+        $policias[] = [
+            'id' => $policia['id'],
+            'texto' => $policia['grado'] . ' ' . $policia['apellido'] . ', ' . $policia['nombre'] . ' (CIN: ' . $policia['cin'] . ')'
+        ];
+    }
+    
+    header('Content-Type: application/json');
+    echo json_encode($policias);
+    exit();
+}
+
+// Obtener tipos de ausencias
 $tipos_ausencias = $conn->query("SELECT * FROM tipos_ausencias ORDER BY nombre ASC");
-$policias = $conn->query("
-    SELECT p.id, p.nombre, p.apellido, g.nombre as grado
-    FROM policias p
-    JOIN grados g ON p.grado_id = g.id
-    WHERE p.activo = 1
-    ORDER BY p.apellido ASC
-");
 
 // Procesar formulario de nueva ausencia
 if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
@@ -52,6 +74,21 @@ if ($_POST && isset($_POST['action']) && in_array($_POST['action'], ['aprobar', 
         $mensaje = "<div class='alert alert-success'>Ausencia " . strtolower($estado) . " exitosamente</div>";
     } else {
         $mensaje = "<div class='alert alert-danger'>Error al procesar ausencia: " . $conn->error . "</div>";
+    }
+}
+
+// Procesar eliminación de ausencias
+if ($_POST && isset($_POST['action']) && $_POST['action'] == 'eliminar') {
+    $ausencia_id = $_POST['ausencia_id'];
+    
+    $sql = "DELETE FROM ausencias WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $ausencia_id);
+    
+    if ($stmt->execute()) {
+        $mensaje = "<div class='alert alert-success'>Ausencia eliminada exitosamente</div>";
+    } else {
+        $mensaje = "<div class='alert alert-danger'>Error al eliminar ausencia: " . $conn->error . "</div>";
     }
 }
 
@@ -106,11 +143,64 @@ $ausencias = $conn->query("
             color: white;
             border: none;
         }
+        
+        /* Estilos para el buscador */
+        .search-container {
+            position: relative;
+        }
+        
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .search-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .search-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .search-item:last-child {
+            border-bottom: none;
+        }
+        
+        .no-results {
+            padding: 10px 15px;
+            color: #6c757d;
+            font-style: italic;
+        }
+        
+        .selected-policia {
+            background-color: #e3f2fd;
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 5px;
+            display: none;
+        }
+        
+        .clear-selection {
+            color: #dc3545;
+            cursor: pointer;
+            float: right;
+        }
     </style>
 </head>
 <body>
-  
-    
     <div class="container-fluid">
         <div class="row">
             <?php include '../inc/sidebar.php'; ?>
@@ -130,19 +220,27 @@ $ausencias = $conn->query("
                             <h5><i class="fas fa-plus-circle"></i> Registrar Nueva Ausencia</h5>
                         </div>
                         <div class="card-body">
-                            <form method="POST">
+                            <form method="POST" id="formAusencia">
                                 <input type="hidden" name="action" value="crear">
+                                <input type="hidden" name="policia_id" id="policia_id_hidden">
+                                
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
                                         <label class="form-label">Policía *</label>
-                                        <select class="form-select" name="policia_id" required>
-                                            <option value="">Seleccionar policía...</option>
-                                            <?php while ($policia = $policias->fetch_assoc()): ?>
-                                            <option value="<?php echo $policia['id']; ?>">
-                                                <?php echo $policia['grado'] . ' ' . $policia['apellido'] . ', ' . $policia['nombre']; ?>
-                                            </option>
-                                            <?php endwhile; ?>
-                                        </select>
+                                        <div class="search-container">
+                                            <input type="text" 
+                                                   class="form-control" 
+                                                   id="buscar_policia" 
+                                                   placeholder="Buscar por nombre, apellido o CIN..."
+                                                   autocomplete="off">
+                                            <div class="search-results" id="resultados_busqueda"></div>
+                                        </div>
+                                        <div class="selected-policia" id="policia_seleccionado">
+                                            <span id="policia_texto"></span>
+                                            <span class="clear-selection" onclick="limpiarSeleccion()">
+                                                <i class="fas fa-times"></i>
+                                            </span>
+                                        </div>
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label class="form-label">Tipo de Ausencia *</label>
@@ -156,6 +254,7 @@ $ausencias = $conn->query("
                                         </select>
                                     </div>
                                 </div>
+                                
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
                                         <label class="form-label">Fecha de Inicio *</label>
@@ -227,33 +326,52 @@ $ausencias = $conn->query("
                                             </td>
                                             <td><?php echo substr($ausencia['descripcion'], 0, 50) . '...'; ?></td>
                                             <td>
-                                                <?php if ($ausencia['estado'] == 'PENDIENTE'): ?>
-                                                <div class="btn-group" role="group">
-                                                    <form method="POST" style="display: inline;">
-                                                        <input type="hidden" name="action" value="aprobar">
-                                                        <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
-                                                        <button type="submit" class="btn btn-sm btn-success" 
-                                                                onclick="return confirm('¿Aprobar esta ausencia?')">
-                                                            <i class="fas fa-check"></i>
-                                                        </button>
-                                                    </form>
-                                                    <form method="POST" style="display: inline;">
-                                                        <input type="hidden" name="action" value="rechazar">
-                                                        <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
-                                                        <button type="submit" class="btn btn-sm btn-danger" 
-                                                                onclick="return confirm('¿Rechazar esta ausencia?')">
-                                                            <i class="fas fa-times"></i>
-                                                        </button>
-                                                    </form>
-                                                </div>
-                                                <?php else: ?>
-                                                <small class="text-muted">
-                                                    <?php if ($ausencia['aprobado_nombre']): ?>
-                                                        Por: <?php echo $ausencia['aprobado_apellido'] . ', ' . $ausencia['aprobado_nombre']; ?>
+                                                <td>
+                                                    <?php if ($ausencia['estado'] == 'PENDIENTE'): ?>
+                                                    <div class="btn-group" role="group">
+                                                        <form method="POST" style="display: inline;">
+                                                            <input type="hidden" name="action" value="aprobar">
+                                                            <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
+                                                            <button type="submit" class="btn btn-sm btn-success" 
+                                                                    onclick="return confirm('¿Aprobar esta ausencia?')">
+                                                                <i class="fas fa-check"></i>
+                                                            </button>
+                                                        </form>
+                                                        <form method="POST" style="display: inline;">
+                                                            <input type="hidden" name="action" value="rechazar">
+                                                            <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
+                                                            <button type="submit" class="btn btn-sm btn-danger" 
+                                                                    onclick="return confirm('¿Rechazar esta ausencia?')">
+                                                                <i class="fas fa-times"></i>
+                                                            </button>
+                                                        </form>
+                                                        <form method="POST" style="display: inline;">
+                                                            <input type="hidden" name="action" value="eliminar">
+                                                            <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger" 
+                                                                    onclick="return confirm('¿Está seguro de eliminar esta ausencia? Esta acción no se puede deshacer.')">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        </form>
+                                                    </div>
+                                                    <?php else: ?>
+                                                    <div class="d-flex align-items-center">
+                                                        <small class="text-muted me-2">
+                                                            <?php if ($ausencia['aprobado_nombre']): ?>
+                                                                Por: <?php echo $ausencia['aprobado_apellido'] . ', ' . $ausencia['aprobado_nombre']; ?>
+                                                            <?php endif; ?>
+                                                        </small>
+                                                        <form method="POST" style="display: inline;">
+                                                            <input type="hidden" name="action" value="eliminar">
+                                                            <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger" 
+                                                                    onclick="return confirm('¿Está seguro de eliminar esta ausencia? Esta acción no se puede deshacer.')">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        </form>
+                                                    </div>
                                                     <?php endif; ?>
-                                                </small>
-                                                <?php endif; ?>
-                                            </td>
+                                                </td>
                                         </tr>
                                         <?php endwhile; ?>
                                         <?php else: ?>
@@ -274,5 +392,89 @@ $ausencias = $conn->query("
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let timeoutId;
+        let policiaSeleccionado = null;
+        
+        document.getElementById('buscar_policia').addEventListener('input', function() {
+            const termino = this.value.trim();
+            
+            clearTimeout(timeoutId);
+            
+            if (termino.length < 2) {
+                ocultarResultados();
+                return;
+            }
+            
+            timeoutId = setTimeout(() => {
+                buscarPolicias(termino);
+            }, 300);
+        });
+        
+        function buscarPolicias(termino) {
+            fetch(`?buscar_policia=${encodeURIComponent(termino)}`)
+                .then(response => response.json())
+                .then(data => {
+                    mostrarResultados(data);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+        
+        function mostrarResultados(policias) {
+            const contenedor = document.getElementById('resultados_busqueda');
+            
+            if (policias.length === 0) {
+                contenedor.innerHTML = '<div class="no-results">No se encontraron policías</div>';
+            } else {
+                contenedor.innerHTML = policias.map(policia => 
+                    `<div class="search-item" onclick="seleccionarPolicia(${policia.id}, '${policia.texto.replace(/'/g, "\\'")}')">                        ${policia.texto}
+                    </div>`
+                ).join('');
+            }
+            
+            contenedor.style.display = 'block';
+        }
+        
+        function seleccionarPolicia(id, texto) {
+            policiaSeleccionado = { id, texto };
+            
+            document.getElementById('policia_id_hidden').value = id;
+            document.getElementById('policia_texto').textContent = texto;
+            document.getElementById('policia_seleccionado').style.display = 'block';
+            document.getElementById('buscar_policia').value = '';
+            
+            ocultarResultados();
+        }
+        
+        function limpiarSeleccion() {
+            policiaSeleccionado = null;
+            document.getElementById('policia_id_hidden').value = '';
+            document.getElementById('policia_seleccionado').style.display = 'none';
+            document.getElementById('buscar_policia').value = '';
+            document.getElementById('buscar_policia').focus();
+        }
+        
+        function ocultarResultados() {
+            document.getElementById('resultados_busqueda').style.display = 'none';
+        }
+        
+        // Ocultar resultados al hacer clic fuera
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.search-container')) {
+                ocultarResultados();
+            }
+        });
+        
+        // Validación del formulario
+        document.getElementById('formAusencia').addEventListener('submit', function(e) {
+            if (!policiaSeleccionado) {
+                e.preventDefault();
+                alert('Por favor selecciona un policía');
+                document.getElementById('buscar_policia').focus();
+            }
+        });
+    </script>
 </body>
 </html>
