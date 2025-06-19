@@ -91,6 +91,80 @@ $policias = $conn->query("
             color: white;
             border: none;
         }
+        
+        /* Estilos para el buscador */
+        .search-container {
+            position: relative;
+            max-width: 400px;
+        }
+        .search-input {
+            border-radius: 25px;
+            border: 2px solid #e9ecef;
+            padding: 12px 45px 12px 20px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .search-input:focus {
+            border-color: #104c75;
+            box-shadow: 0 0 0 0.2rem rgba(16, 76, 117, 0.25);
+            outline: none;
+        }
+        .search-icon {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
+            font-size: 18px;
+        }
+        .clear-search {
+            position: absolute;
+            right: 40px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #6c757d;
+            font-size: 16px;
+            cursor: pointer;
+            display: none;
+        }
+        .clear-search:hover {
+            color: #dc3545;
+        }
+        .search-results-info {
+            font-size: 14px;
+            color: #6c757d;
+            margin-top: 10px;
+        }
+        .highlight {
+            background-color: #fff3cd;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+        .header-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        @media (max-width: 768px) {
+            .header-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .search-container {
+                max-width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
@@ -112,11 +186,28 @@ $policias = $conn->query("
 
                     <?php if (isset($mensaje)) echo $mensaje; ?>
 
-                    <!-- Botón para agregar nuevo policía -->
-                    <div class="mb-3">
-                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNuevoPolicia">
-                            <i class="fas fa-user-plus"></i> Registrar Nuevo Policía
-                        </button>
+                    <!-- Controles del header -->
+                    <div class="header-controls">
+                        <!-- Botón para agregar nuevo policía -->
+                        <div>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNuevoPolicia">
+                                <i class="fas fa-user-plus"></i> Registrar Nuevo Policía
+                            </button>
+                        </div>
+                        
+                        <!-- Buscador en tiempo real -->
+                        <div class="search-container">
+                            <input type="text" 
+                                   id="searchInput" 
+                                   class="form-control search-input" 
+                                   placeholder="Buscar policías..." 
+                                   autocomplete="off">
+                            <button type="button" id="clearSearch" class="clear-search">
+                                <i class="fas fa-times"></i>
+                            </button>
+                            <i class="fas fa-search search-icon"></i>
+                            <div id="searchInfo" class="search-results-info"></div>
+                        </div>
                     </div>
 
                     <!-- Tabla de policías -->
@@ -126,7 +217,7 @@ $policias = $conn->query("
                         </div>
                         <div class="card-body">
                             <div class="table-responsive">
-                                <table class="table table-striped">
+                                <table class="table table-striped" id="policiasTable">
                                     <thead>
                                         <tr>
                                             <th>CIN</th>
@@ -139,15 +230,15 @@ $policias = $conn->query("
                                             <th>Acciones</th>
                                         </tr>
                                     </thead>
-                                    <tbody>
+                                    <tbody id="policiasTableBody">
                                         <?php while ($policia = $policias->fetch_assoc()): ?>
-                                        <tr>
-                                            <td><?php echo $policia['cin']; ?></td>
-                                            <td><?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?></td>
-                                            <td><?php echo $policia['grado_nombre']; ?></td>
-                                            <td><?php echo $policia['especialidad_nombre'] ?: 'N/A'; ?></td>
-                                            <td><?php echo $policia['cargo']; ?></td>
-                                            <td><?php echo $policia['telefono']; ?></td>
+                                        <tr class="policia-row" data-search="<?php echo strtolower($policia['cin'] . ' ' . $policia['nombre'] . ' ' . $policia['apellido'] . ' ' . $policia['grado_nombre'] . ' ' . ($policia['especialidad_nombre'] ?: '') . ' ' . $policia['cargo'] . ' ' . $policia['telefono'] . ' ' . $policia['region']); ?>">
+                                            <td class="searchable"><?php echo $policia['cin']; ?></td>
+                                            <td class="searchable"><?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?></td>
+                                            <td class="searchable"><?php echo $policia['grado_nombre']; ?></td>
+                                            <td class="searchable"><?php echo $policia['especialidad_nombre'] ?: 'N/A'; ?></td>
+                                            <td class="searchable"><?php echo $policia['cargo']; ?></td>
+                                            <td class="searchable"><?php echo $policia['telefono']; ?></td>
                                             <td>
                                                 <span class="badge bg-<?php echo $policia['region'] == 'CENTRAL' ? 'primary' : 'secondary'; ?>">
                                                     <?php echo $policia['region']; ?>
@@ -170,6 +261,13 @@ $policias = $conn->query("
                                         <?php endwhile; ?>
                                     </tbody>
                                 </table>
+                                
+                                <!-- Mensaje cuando no hay resultados -->
+                                <div id="noResults" class="no-results" style="display: none;">
+                                    <i class="fas fa-search fa-3x mb-3"></i>
+                                    <h5>No se encontraron resultados</h5>
+                                    <p>Intenta con otros términos de búsqueda</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -273,6 +371,108 @@ $policias = $conn->query("
     </div>
 
     <script>
+        // Funcionalidad del buscador en tiempo real
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('searchInput');
+            const clearButton = document.getElementById('clearSearch');
+            const searchInfo = document.getElementById('searchInfo');
+            const tableBody = document.getElementById('policiasTableBody');
+            const noResults = document.getElementById('noResults');
+            const table = document.getElementById('policiasTable');
+            const allRows = document.querySelectorAll('.policia-row');
+            
+            let searchTimeout;
+            
+            // Función para resaltar texto
+            function highlightText(text, searchTerm) {
+                if (!searchTerm) return text;
+                const regex = new RegExp(`(${searchTerm})`, 'gi');
+                return text.replace(regex, '<span class="highlight">$1</span>');
+            }
+            
+            // Función para limpiar resaltados
+            function clearHighlights() {
+                document.querySelectorAll('.searchable').forEach(cell => {
+                    const text = cell.textContent;
+                    cell.innerHTML = text;
+                });
+            }
+            
+            // Función principal de búsqueda
+            function performSearch() {
+                const searchTerm = searchInput.value.toLowerCase().trim();
+                let visibleCount = 0;
+                
+                // Limpiar resaltados previos
+                clearHighlights();
+                
+                allRows.forEach(row => {
+                    const searchData = row.getAttribute('data-search');
+                    const isVisible = searchData.includes(searchTerm);
+                    
+                    row.style.display = isVisible ? '' : 'none';
+                    
+                    if (isVisible) {
+                        visibleCount++;
+                        
+                        // Resaltar términos de búsqueda si hay texto
+                        if (searchTerm) {
+                            row.querySelectorAll('.searchable').forEach(cell => {
+                                const originalText = cell.textContent;
+                                cell.innerHTML = highlightText(originalText, searchTerm);
+                            });
+                        }
+                    }
+                });
+                
+                // Mostrar/ocultar mensaje de "no resultados"
+                if (visibleCount === 0 && searchTerm) {
+                    table.style.display = 'none';
+                    noResults.style.display = 'block';
+                } else {
+                    table.style.display = 'table';
+                    noResults.style.display = 'none';
+                }
+                
+                // Actualizar información de resultados
+                if (searchTerm) {
+                    searchInfo.textContent = `${visibleCount} resultado(s) encontrado(s)`;
+                    clearButton.style.display = 'block';
+                } else {
+                    searchInfo.textContent = '';
+                    clearButton.style.display = 'none';
+                }
+            }
+            
+            // Event listeners
+            searchInput.addEventListener('input', function() {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(performSearch, 150); // Debounce de 150ms
+            });
+            
+            searchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    clearSearch();
+                }
+            });
+            
+            clearButton.addEventListener('click', clearSearch);
+            
+            function clearSearch() {
+                searchInput.value = '';
+                performSearch();
+                searchInput.focus();
+            }
+            
+            // Enfocar el buscador con Ctrl+F
+            document.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.key === 'f') {
+                    e.preventDefault();
+                    searchInput.focus();
+                }
+            });
+        });
+        
         function verDetalles(policiaId) {
             // Aquí puedes implementar un modal o redireccionar a una página de detalles
             // Por ejemplo, abrir un modal con información detallada
