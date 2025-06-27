@@ -16,8 +16,8 @@ if ($policia_id <= 0) {
     exit();
 }
 
-// Obtener datos del policía
-$stmt = $conn->prepare("SELECT * FROM policias WHERE id = ? AND activo = 1");
+// Obtener datos del policía con información de región
+$stmt = $conn->prepare("SELECT p.*, r.nombre as region_nombre FROM policias p LEFT JOIN regiones r ON p.region_id = r.id WHERE p.id = ? AND p.activo = 1");
 $stmt->bind_param("i", $policia_id);
 $stmt->execute();
 $policia = $stmt->get_result()->fetch_assoc();
@@ -27,48 +27,67 @@ if (!$policia) {
     exit();
 }
 
-// Obtener datos para los formularios
+// Obtener grados, especialidades, regiones y lugares de guardia para los selectores del formulario
 $grados = $conn->query("SELECT * FROM grados ORDER BY nivel_jerarquia ASC");
 $especialidades = $conn->query("SELECT * FROM especialidades ORDER BY nombre ASC");
+$regiones = $conn->query("SELECT * FROM regiones ORDER BY nombre ASC");
 $lugares_guardias = $conn->query("SELECT * FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
 
 // Procesar formulario de actualización
 if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
+    $legajo = (int)trim($_POST['legajo']);
     $nombre = trim($_POST['nombre']);
     $apellido = trim($_POST['apellido']);
     $cin = trim($_POST['cin']);
+    $genero = trim($_POST['genero']);
     $grado_id = $_POST['grado_id'];
     $especialidad_id = $_POST['especialidad_id'] ?: null;
     $cargo = trim($_POST['cargo']);
     $comisionamiento = trim($_POST['comisionamiento']);
     $telefono = trim($_POST['telefono']);
-    $region = $_POST['region'];
+    $region_id = !empty($_POST['region_id']) ? $_POST['region_id'] : null;
     $lugar_guardia_id = $_POST['lugar_guardia_id'] ?: null;
-    $fecha_ingreso = $_POST['fecha_ingreso'];
     $observaciones = trim($_POST['observaciones']);
-    
-    // Validar CIN único (excluyendo el registro actual)
-    $check_cin = $conn->prepare("SELECT id FROM policias WHERE cin = ? AND id != ? AND activo = 1");
-    $check_cin->bind_param("si", $cin, $policia_id);
-    $check_cin->execute();
-    $result = $check_cin->get_result();
-    
-    if ($result->num_rows > 0) {
-        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> El CIN ya está registrado por otro policía</div>";
+
+
+
+    // Validar campos requeridos
+    if (empty($genero)) {
+        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> El género es requerido</div>";
+    } elseif ($legajo <= 0) {
+        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> El legajo debe ser un número válido</div>";
     } else {
-        $sql = "UPDATE policias SET nombre = ?, apellido = ?, cin = ?, grado_id = ?, especialidad_id = ?, cargo = ?, comisionamiento = ?, telefono = ?, region = ?, lugar_guardia_id = ?, fecha_ingreso = ?, observaciones = ? WHERE id = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssiisisssssi", $nombre, $apellido, $cin, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region, $lugar_guardia_id, $fecha_ingreso, $observaciones, $policia_id);
+        // Validar legajo único (excluyendo el registro actual)
+        $check_legajo = $conn->prepare("SELECT id FROM policias WHERE legajo = ? AND id != ? AND activo = 1");
+        $check_legajo->bind_param("ii", $legajo, $policia_id);
+        $check_legajo->execute();
+        $result_legajo = $check_legajo->get_result();
         
-        if ($stmt->execute()) {
-            $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle'></i> Policía actualizado exitosamente</div>";
-            // Recargar datos del policía
-            $stmt = $conn->prepare("SELECT * FROM policias WHERE id = ?");
-            $stmt->bind_param("i", $policia_id);
-            $stmt->execute();
-            $policia = $stmt->get_result()->fetch_assoc();
+        // Validar CIN único (excluyendo el registro actual)
+        $check_cin = $conn->prepare("SELECT id FROM policias WHERE cin = ? AND id != ? AND activo = 1");
+        $check_cin->bind_param("si", $cin, $policia_id);
+        $check_cin->execute();
+        $result_cin = $check_cin->get_result();
+        
+        if ($result_legajo->num_rows > 0) {
+            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> El legajo ya está registrado por otro policía</div>";
+        } elseif ($result_cin->num_rows > 0) {
+            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> El CIN ya está registrado por otro policía</div>";
         } else {
-            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al actualizar policía: " . $conn->error . "</div>";
+            $sql = "UPDATE policias SET legajo = ?, nombre = ?, apellido = ?, cin = ?, genero = ?, grado_id = ?, especialidad_id = ?, cargo = ?, comisionamiento = ?, telefono = ?, region_id = ?, lugar_guardia_id = ?, observaciones = ? WHERE id = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("issssiisssisii", $legajo, $nombre, $apellido, $cin, $genero, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region_id, $lugar_guardia_id, $observaciones, $policia_id);
+            
+            if ($stmt->execute()) {
+                $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle'></i> Policía actualizado exitosamente</div>";
+                // Recargar datos del policía
+                $stmt = $conn->prepare("SELECT * FROM policias WHERE id = ?");
+                $stmt->bind_param("i", $policia_id);
+                $stmt->execute();
+                $policia = $stmt->get_result()->fetch_assoc();
+            } else {
+                $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al actualizar policía: " . $conn->error . "</div>";
+            }
         }
     }
 }
@@ -182,7 +201,13 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                 <div class="row">
                                     <!-- Información Personal -->
                                     <div class="col-md-6">
-                                        <h6 class="text-primary mb-3"><i class="fas fa-user"></i> Datos Personales</h6>
+                                        <h6 class="text-primary mb-3"><i class="fas fa-user"></i> Información Personal</h6>
+                                        
+                                        <div class="mb-3">
+                                            <label for="legajo" class="form-label">Legajo <span class="required">*</span></label>
+                                            <input type="number" class="form-control" id="legajo" name="legajo" 
+                                                   value="<?php echo htmlspecialchars($policia['legajo']); ?>" required min="1">
+                                        </div>
                                         
                                         <div class="mb-3">
                                             <label for="nombre" class="form-label">Nombre <span class="required">*</span></label>
@@ -201,6 +226,15 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                             <input type="text" class="form-control" id="cin" name="cin" 
                                                    value="<?php echo htmlspecialchars($policia['cin']); ?>" 
                                                    pattern="[0-9]{1,8}" title="Solo números, máximo 8 dígitos" required>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label for="genero" class="form-label">Género <span class="required">*</span></label>
+                                            <select class="form-select" id="genero" name="genero" required>
+                                                <option value="">Seleccionar género...</option>
+                                                <option value="MASCULINO" <?php echo ($policia['genero'] == 'MASCULINO') ? 'selected' : ''; ?>>Masculino</option>
+                                                <option value="FEMENINO" <?php echo ($policia['genero'] == 'FEMENINO') ? 'selected' : ''; ?>>Femenino</option>
+                                            </select>
                                         </div>
                                         
                                         <div class="mb-3">
@@ -247,9 +281,9 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                         </div>
                                         
                                         <div class="mb-3">
-                                            <label for="fecha_ingreso" class="form-label">Fecha de Ingreso <span class="required">*</span></label>
-                                            <input type="date" class="form-control" id="fecha_ingreso" name="fecha_ingreso" 
-                                                   value="<?php echo $policia['fecha_ingreso']; ?>" required>
+                                            <label for="comisionamiento" class="form-label">Comisionamiento</label>
+                                            <input type="text" class="form-control" id="comisionamiento" name="comisionamiento" 
+                                                   value="<?php echo htmlspecialchars($policia['comisionamiento']); ?>">
                                         </div>
                                     </div>
                                 </div>
@@ -260,11 +294,19 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                         <h6 class="text-primary mb-3"><i class="fas fa-map-marker-alt"></i> Asignación</h6>
                                         
                                         <div class="mb-3">
-                                            <label for="region" class="form-label">Región <span class="required">*</span></label>
-                                            <select class="form-select" id="region" name="region" required>
+                                            <label for="region_id" class="form-label">Región</label>
+                                            <select class="form-select" id="region_id" name="region_id">
                                                 <option value="">Seleccionar región...</option>
-                                                <option value="CENTRAL" <?php echo ($policia['region'] == 'CENTRAL') ? 'selected' : ''; ?>>Central</option>
-                                                <option value="REGIONAL" <?php echo ($policia['region'] == 'REGIONAL') ? 'selected' : ''; ?>>Regional</option>
+                                                <?php 
+                                                if ($regiones->num_rows > 0) {
+                                                    while ($region = $regiones->fetch_assoc()): 
+                                                ?>
+                                                <option value="<?php echo $region['id']; ?>" <?php echo ($policia['region_id'] == $region['id']) ? 'selected' : ''; ?>><?php echo htmlspecialchars($region['nombre']); ?></option>
+                                                <?php 
+                                                    endwhile; 
+                                                    $regiones->data_seek(0);
+                                                }
+                                                ?>
                                             </select>
                                         </div>
                                         
@@ -280,12 +322,6 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                                 <?php endwhile; ?>
                                             </select>
                                         </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="comisionamiento" class="form-label">Comisionamiento</label>
-                                            <input type="text" class="form-control" id="comisionamiento" name="comisionamiento" 
-                                                   value="<?php echo htmlspecialchars($policia['comisionamiento']); ?>">
-                                        </div>
                                     </div>
                                     
                                     <!-- Observaciones -->
@@ -294,18 +330,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                         
                                         <div class="mb-3">
                                             <label for="observaciones" class="form-label">Observaciones</label>
-                                            <textarea class="form-control" id="observaciones" name="observaciones" rows="3" 
-                                                      placeholder="Información adicional sobre el policía..."><?php echo htmlspecialchars($policia['observaciones']); ?></textarea>
-                                        </div>
-                                        
-                                        <!-- Información adicional -->
-                                        <div class="alert alert-info">
-                                            <small>
-                                                <strong>Información del registro:</strong><br>
-                                                <i class="fas fa-calendar"></i> Creado: <?php echo date('d/m/Y H:i', strtotime($policia['created_at'])); ?><br>
-                                                <i class="fas fa-edit"></i> Actualizado: <?php echo date('d/m/Y H:i', strtotime($policia['updated_at'])); ?><br>
-                                                <i class="fas fa-clock"></i> Antigüedad: <?php echo $policia['antiguedad_dias']; ?> días
-                                            </small>
+                                            <textarea class="form-control" id="observaciones" name="observaciones" rows="5"><?php echo htmlspecialchars($policia['observaciones']); ?></textarea>
                                         </div>
                                     </div>
                                 </div>
@@ -340,6 +365,8 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
             const cin = document.getElementById('cin').value;
             const nombre = document.getElementById('nombre').value;
             const apellido = document.getElementById('apellido').value;
+            const legajo = document.getElementById('legajo').value;
+            const genero = document.getElementById('genero').value;
             
             if (cin.length < 6 || cin.length > 8) {
                 e.preventDefault();
@@ -352,10 +379,27 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                 alert('El nombre y apellido deben tener al menos 2 caracteres');
                 return false;
             }
+            
+            if (!legajo || legajo <= 0) {
+                e.preventDefault();
+                alert('El legajo es requerido y debe ser un número válido');
+                return false;
+            }
+            
+            if (!genero) {
+                e.preventDefault();
+                alert('El género es requerido');
+                return false;
+            }
         });
         
         // Formatear CIN solo números
         document.getElementById('cin').addEventListener('input', function(e) {
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+        
+        // Formatear legajo solo números
+        document.getElementById('legajo').addEventListener('input', function(e) {
             this.value = this.value.replace(/[^0-9]/g, '');
         });
         

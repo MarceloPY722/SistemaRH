@@ -68,24 +68,7 @@ if (isset($_SESSION['usuario_id'])) {
                                 <span>Ver Policías</span>
                             </a>
                         </li>
-                        <li>
-                            <a href="/SistemaRH/admin/policias/especialidad/index.php" class="submenu-link">
-                                <i class="fas fa-certificate"></i>
-                                <span>Especialidades</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="/SistemaRH/admin/policias/grado/" class="submenu-link">
-                                <i class="fas fa-star"></i>
-                                <span>Grados</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="/SistemaRH/admin/policias/lugar_guardias/" class="submenu-link">
-                                <i class="fas fa-map-marker-alt"></i>
-                                <span>Lugares de Guardia</span>
-                            </a>
-                        </li>
+                       
                     </ul>
                 </li>
 
@@ -141,11 +124,36 @@ if (isset($_SESSION['usuario_id'])) {
                         <span class="nav-text">Configuración</span>
                         <i class="fas fa-chevron-right submenu-arrow"></i>
                     </a>
+                    
                     <ul class="submenu">
                         <li>
-                            <a href="#" class="submenu-link">
+                            <a href="/SistemaRH/admin/config/config_guard.php" class="submenu-link">
                                 <i class="fas fa-user-cog"></i>
-                                <span>Perfil</span>
+                                <span>Configuración de Guardias</span>
+                            </a>
+                        </li>
+                         <li>
+                            <a href="/SistemaRH/admin/policias/especialidad/index.php" class="submenu-link">
+                                <i class="fas fa-certificate"></i>
+                                <span>Especialidades</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/SistemaRH/admin/policias/grado/" class="submenu-link">
+                                <i class="fas fa-star"></i>
+                                <span>Grados</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/SistemaRH/admin/policias/lugar_guardias/" class="submenu-link">
+                                <i class="fas fa-map-marker-alt"></i>
+                                <span>Lugares de Guardia</span>
+                            </a>
+                        </li>
+                         <li>
+                            <a href="/SistemaRH/admin/policias/region/index.php" class="submenu-link">
+                                <i class="fas fa-map-marker-alt"></i>
+                                <span>Region</span>
                             </a>
                         </li>
                     </ul>
@@ -166,7 +174,6 @@ if (isset($_SESSION['usuario_id'])) {
 </div>
 
 <style>
-/* Variables CSS para colores y espaciado */
 :root {
     --sidebar-bg: linear-gradient(135deg, #104c75 0%, #0d3d5c 100%);
     --sidebar-width: 100%;

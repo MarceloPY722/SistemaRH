@@ -18,11 +18,12 @@ if ($policia_id <= 0) {
 
 // Obtener datos del policía
 $stmt = $conn->prepare("
-    SELECT p.*, g.nombre as grado_nombre, e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre
+    SELECT p.*, g.nombre as grado_nombre, e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre
     FROM policias p
     LEFT JOIN grados g ON p.grado_id = g.id
     LEFT JOIN especialidades e ON p.especialidad_id = e.id
     LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
+    LEFT JOIN regiones r ON p.region_id = r.id
     WHERE p.id = ? AND p.activo = 1
 ");
 $stmt->bind_param("i", $policia_id);
@@ -234,16 +235,13 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'eliminar') {
                                         </tr>
                                         <tr>
                                             <td><strong>Región:</strong></td>
-                                            <td><?php echo htmlspecialchars($policia['region']); ?></td>
+                                            <td><?php echo htmlspecialchars($policia['region_nombre']); ?></td>
                                         </tr>
                                         <tr>
                                             <td><strong>Lugar de Guardia:</strong></td>
                                             <td><?php echo $policia['lugar_guardia_nombre'] ? htmlspecialchars($policia['lugar_guardia_nombre']) : 'Sin asignar'; ?></td>
                                         </tr>
-                                        <tr>
-                                            <td><strong>Fecha de Ingreso:</strong></td>
-                                            <td><?php echo date('d/m/Y', strtotime($policia['fecha_ingreso'])); ?></td>
-                                        </tr>
+                                      
                                     </table>
                                 </div>
                             </div>

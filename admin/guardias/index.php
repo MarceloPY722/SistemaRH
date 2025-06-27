@@ -7,456 +7,262 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 
 require_once '../../cnx/db_connect.php';
-require_once '../../config/config_fecha_sistema.php'; // Incluir el nuevo sistema de fechas
-require_once '../../lib/fpdf/fpdf.php'; // Incluir la librería FPDF
+require_once '../../config/config_fecha_sistema.php';
+require_once 'generar_pdf.php'; // Incluir el archivo de generación de PDF
 
-// Función para generar PDF de guardia
-function generarPDFGuardia($guardiaData, $tipo = 'actual') {
-    $pdf = new FPDF();
-    $pdf->AddPage();
-    $pdf->SetFont('Arial', 'B', 16);
+// Procesar acciones
+if ($_POST && isset($_POST['action'])) {
+    $action = $_POST['action'];
     
-    // Título
-    $pdf->Cell(0, 10, 'LISTA DE GUARDIA - ' . strtoupper($tipo), 0, 1, 'C');
-    $pdf->Cell(0, 10, 'Fecha: ' . date('d/m/Y H:i'), 0, 1, 'C');
-    $pdf->Ln(10);
-    
-    // Datos con formato de líneas
-    $pdf->SetFont('Arial', '', 12);
-    foreach ($guardiaData as $lugar => $policia) {
-        // Lugar de guardia
-        $pdf->SetFont('Arial', 'B', 12);
-        $pdf->Cell(0, 8, utf8_decode($lugar), 0, 1, 'L');
+    if ($action == 'generar_guardia') {
+        $lugar_id = $_POST['lugar_id'];
         
-        // Nombre completo y teléfono con puntos
-        $pdf->SetFont('Arial', '', 11);
-        $nombreCompleto = utf8_decode($policia['apellido'] . ', ' . $policia['nombre']);
-        $telefono = $policia['telefono'] ?: 'No registrado';
+        // Obtener el próximo policía disponible según el día de la semana
+        $stmt = $conn->prepare("CALL ObtenerProximoPoliciaDisponible(?, @policia_id, @policia_info)");
+        $stmt->bind_param("i", $lugar_id);
+        $stmt->execute();
+        $stmt->close();
         
-        // Calcular el ancho disponible
-        $anchoDisponible = 190; // Ancho de página menos márgenes
-        $anchoNombre = $pdf->GetStringWidth($nombreCompleto);
-        $anchoTelefono = $pdf->GetStringWidth($telefono);
-        $anchoPuntos = $anchoDisponible - $anchoNombre - $anchoTelefono - 4; // 4 para espacios
+        // Obtener los resultados
+        $result = $conn->query("SELECT @policia_id as policia_id, @policia_info as policia_info");
+        $row = $result->fetch_assoc();
         
-        // Calcular número de puntos
-        $anchoPunto = $pdf->GetStringWidth('.');
-        $numeroPuntos = floor($anchoPuntos / $anchoPunto);
-        $puntos = str_repeat('.', $numeroPuntos);
-        
-        // Imprimir la línea
-        $pdf->Cell($anchoNombre + 2, 6, $nombreCompleto . ' ', 0, 0, 'L');
-        $pdf->Cell($anchoPuntos, 6, $puntos, 0, 0, 'C');
-        $pdf->Cell($anchoTelefono + 2, 6, ' ' . $telefono, 0, 1, 'R');
-        
-        // Espacio entre lugares
-        $pdf->Ln(3);
-    }
-    
-    // Pie de página
-    $pdf->Ln(20);
-    $pdf->SetFont('Arial', 'I', 8);
-    $pdf->Cell(0, 10, 'Documento generado automaticamente por Sistema RH - ' . date('d/m/Y H:i:s'), 0, 1, 'C');
-    
-    // Generar nombre de archivo
-    $filename = 'guardia_' . $tipo . '_' . date('Y-m-d_H-i-s') . '.pdf';
-    
-    // Descargar PDF
-    $pdf->Output('D', $filename);
-    exit();
-}
-
-// Función para generar PDF de guardia semanal
-function generarPDFGuardiaSemanal($guardiaData) {
-    $pdf = new FPDF();
-    $pdf->AddPage();
-    $pdf->SetFont('Arial', 'B', 16);
-    
-    // Título
-    $pdf->Cell(0, 10, 'LISTA DE GUARDIA SEMANAL', 0, 1, 'C');
-    $pdf->Cell(0, 10, 'Semana del: ' . date('d/m/Y') . ' al ' . date('d/m/Y', strtotime('+6 days')), 0, 1, 'C');
-    $pdf->Ln(10);
-    
-    // Datos por lugar
-    $pdf->SetFont('Arial', '', 10);
-    foreach ($guardiaData as $lugar => $policias) {
-        // Lugar de guardia
-        $pdf->SetFont('Arial', 'B', 12);
-        $pdf->Cell(0, 8, utf8_decode($lugar), 0, 1, 'L');
-        $pdf->Ln(2);
-        
-        // Tabla de policías por día
-        $pdf->SetFont('Arial', 'B', 9);
-        $pdf->Cell(25, 6, 'DIA', 1, 0, 'C');
-        $pdf->Cell(60, 6, 'NOMBRE COMPLETO', 1, 0, 'C');
-        $pdf->Cell(30, 6, 'GRADO', 1, 0, 'C');
-        $pdf->Cell(20, 6, 'CIN', 1, 0, 'C');
-        $pdf->Cell(30, 6, 'TELEFONO', 1, 1, 'C');
-        
-        $pdf->SetFont('Arial', '', 8);
-        foreach ($policias as $policia) {
-            $pdf->Cell(25, 5, utf8_decode($policia['dia_asignado']), 1, 0, 'C');
-            $pdf->Cell(60, 5, utf8_decode($policia['apellido'] . ', ' . $policia['nombre']), 1, 0, 'L');
-            $pdf->Cell(30, 5, utf8_decode($policia['grado']), 1, 0, 'C');
-            $pdf->Cell(20, 5, $policia['cin'], 1, 0, 'C');
-            $pdf->Cell(30, 5, $policia['telefono'] ?: 'No reg.', 1, 1, 'C');
-        }
-        
-        $pdf->Ln(5);
-    }
-    
-    // Pie de página
-    $pdf->Ln(10);
-    $pdf->SetFont('Arial', 'I', 8);
-    $pdf->Cell(0, 10, 'Documento generado automaticamente por Sistema RH - ' . date('d/m/Y H:i:s'), 0, 1, 'C');
-    
-    // Generar nombre de archivo
-    $filename = 'guardia_semanal_' . date('Y-m-d_H-i-s') . '.pdf';
-    
-    // Descargar PDF
-    $pdf->Output('D', $filename);
-    exit();
-}
-
-// Eliminar o comentar las secciones de procesamiento de PDF (líneas 130-280 aproximadamente)
-// Mantener solo el procesamiento de reorganización y rotación
-
-// Procesar reorganización de lista
-if ($_POST && isset($_POST['action']) && $_POST['action'] == 'reorganizar') {
-    $conn->query("CALL ReorganizarListaGuardias()");
-    $mensaje = "<div class='alert alert-success'>Lista de guardias reorganizada exitosamente</div>";
-}
-
-// Procesar rotación de guardia
-if ($_POST && isset($_POST['action']) && $_POST['action'] == 'rotar') {
-    $policia_id = $_POST['policia_id'];
-    $stmt = $conn->prepare("CALL RotarGuardia(?)");
-    $stmt->bind_param("i", $policia_id);
-    $stmt->execute();
-    $mensaje = "<div class='alert alert-success'>Guardia rotada exitosamente</div>";
-}
-
-// Procesar generación de guardia actual
-if ($_POST && isset($_POST['action']) && $_POST['action'] == 'generar_guardia_actual') {
-    // Obtener el primer policía disponible de cada lugar de guardia
-    $guardia_actual = [];
-    
-    $lugares = $conn->query("SELECT id, nombre FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
-    
-    while ($lugar = $lugares->fetch_assoc()) {
-        $policia_lugar = $conn->prepare("
-            SELECT 
-                lg.posicion,
-                p.id as policia_id,
-                p.nombre,
-                p.apellido,
-                p.cin,
-                p.telefono,
-                g.nombre as grado,
-                lguar.nombre as lugar_guardia
-            FROM lista_guardias lg
-            JOIN policias p ON lg.policia_id = p.id
-            JOIN grados g ON p.grado_id = g.id
-            LEFT JOIN lugares_guardias lguar ON p.lugar_guardia_id = lguar.id
-            WHERE p.activo = TRUE 
-            AND p.lugar_guardia_id = ?
-            AND NOT EXISTS (
-                SELECT 1 FROM ausencias a 
-                WHERE a.policia_id = p.id 
-                AND a.estado = 'APROBADA'
-                AND CURDATE() BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, CURDATE())
-            )
-            ORDER BY lg.posicion
-            LIMIT 1
-        ");
-        $policia_lugar->bind_param("i", $lugar['id']);
-        $policia_lugar->execute();
-        $result = $policia_lugar->get_result();
-        
-        if ($policia = $result->fetch_assoc()) {
-            $guardia_actual[$lugar['nombre']] = $policia;
+        if ($row['policia_id']) {
+            $policia_info = json_decode($row['policia_info'], true);
             
-            // Mover al final de la lista de su sector
-            $stmt_rotar = $conn->prepare("CALL RotarGuardia(?)");
-            $stmt_rotar->bind_param("i", $policia['policia_id']);
-            $stmt_rotar->execute();
-        }
-    }
-    
-    // Generar PDF si hay datos
-    if (!empty($guardia_actual)) {
-        generarPDFGuardia($guardia_actual, 'actual');
-    }
-    
-    $mensaje = "<div class='alert alert-success'>Guardia actual generada exitosamente</div>";
-}
-
-// Procesar generación de guardia semanal
-if ($_POST && isset($_POST['action']) && $_POST['action'] == 'generar_guardia_semanal') {
-    $guardia_semanal = [];
-    
-    $lugares = $conn->query("SELECT id, nombre FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
-    
-    while ($lugar = $lugares->fetch_assoc()) {
-        $policias_semana = [];
-        
-        // Obtener 7 policías disponibles de este lugar
-        $policias_lugar = $conn->prepare("
-            SELECT 
-                lg.posicion,
-                p.id as policia_id,
-                p.nombre,
-                p.apellido,
-                p.cin,
-                p.telefono,
-                g.nombre as grado,
-                lguar.nombre as lugar_guardia
-            FROM lista_guardias lg
-            JOIN policias p ON lg.policia_id = p.id
-            JOIN grados g ON p.grado_id = g.id
-            LEFT JOIN lugares_guardias lguar ON p.lugar_guardia_id = lguar.id
-            WHERE p.activo = TRUE 
-            AND p.lugar_guardia_id = ?
-            AND NOT EXISTS (
-                SELECT 1 FROM ausencias a 
-                WHERE a.policia_id = p.id 
-                AND a.estado = 'APROBADA'
-                AND CURDATE() BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, CURDATE())
-            )
-            ORDER BY lg.posicion
-            LIMIT 7
-        ");
-        $policias_lugar->bind_param("i", $lugar['id']);
-        $policias_lugar->execute();
-        $result = $policias_lugar->get_result();
-        
-        $dias_semana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-        $contador_dia = 0;
-        
-        while (($policia = $result->fetch_assoc()) && $contador_dia < 7) {
-            $policia['dia_asignado'] = $dias_semana[$contador_dia];
-            $policias_semana[] = $policia;
+            // Registrar la guardia realizada
+            $stmt_guardia = $conn->prepare("
+                INSERT INTO guardias_realizadas (policia_id, fecha_inicio, fecha_fin, lugar_guardia_id, observaciones) 
+                VALUES (?, NOW(), DATE_ADD(NOW(), INTERVAL 24 HOUR), ?, 'Guardia asignada automáticamente - Sistema FIFO')
+            ");
+            $stmt_guardia->bind_param("ii", $row['policia_id'], $lugar_id);
+            $stmt_guardia->execute();
             
-            // Rotar cada policía al final de la lista
-            $stmt_rotar = $conn->prepare("CALL RotarGuardia(?)");
-            $stmt_rotar->bind_param("i", $policia['policia_id']);
+            // Corregir esta línea - cambiar $policia['policia_id'] por $row['policia_id']
+            $stmt_rotar = $conn->prepare("CALL RotarGuardiaFIFO(?)");
+            $stmt_rotar->bind_param("i", $row['policia_id']); // <- Cambio aquí
             $stmt_rotar->execute();
             
-            $contador_dia++;
-        }
-        
-        if (!empty($policias_semana)) {
-            $guardia_semanal[$lugar['nombre']] = $policias_semana;
-        }
-    }
-    
-    // Generar PDF si hay datos
-    if (!empty($guardia_semanal)) {
-        generarPDFGuardiaSemanal($guardia_semanal);
-    }
-    
-    $mensaje = "<div class='alert alert-success'>Guardia semanal generada exitosamente (7 días por lugar)</div>";
-}
-
-// Procesar generación de guardia general
-if ($_POST && isset($_POST['action']) && $_POST['action'] == 'generar_guardia_general') {
-    $guardia_general = [];
-    
-    $lugares = $conn->query("SELECT id, nombre FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
-    
-    while ($lugar = $lugares->fetch_assoc()) {
-        $policias_lugar = $conn->prepare("
-            SELECT 
-                lg.posicion,
-                p.id as policia_id,
-                p.nombre,
-                p.apellido,
-                p.cin,
-                p.telefono,
-                g.nombre as grado,
-                lguar.nombre as lugar_guardia
-            FROM lista_guardias lg
-            JOIN policias p ON lg.policia_id = p.id
-            JOIN grados g ON p.grado_id = g.id
-            LEFT JOIN lugares_guardias lguar ON p.lugar_guardia_id = lguar.id
-            WHERE p.activo = TRUE 
-            AND p.lugar_guardia_id = ?
-            AND NOT EXISTS (
-                SELECT 1 FROM ausencias a 
-                WHERE a.policia_id = p.id 
-                AND a.estado = 'APROBADA'
-                AND CURDATE() BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, CURDATE())
-            )
-            ORDER BY lg.posicion
-            LIMIT 1
-        ");
-        $policias_lugar->bind_param("i", $lugar['id']);
-        $policias_lugar->execute();
-        $result = $policias_lugar->get_result();
-        
-        if ($policia = $result->fetch_assoc()) {
-            $guardia_general[$lugar['nombre']] = $policia;
+            $dia_semana = date('w'); 
+            $region = $policia_info['region'];
+            $periodo = ($region == 'CENTRAL') ? '15 días' : '30 días';
+            $tipo_dia = ($dia_semana >= 1 && $dia_semana <= 4) ? 'día de semana (Central)' : 'fin de semana (Regional)';
             
-            // Opcional: Rotar al policía seleccionado al final de la lista
-            $stmt_rotar = $conn->prepare("CALL RotarGuardia(?)");
-            $stmt_rotar->bind_param("i", $policia['policia_id']);
-            $stmt_rotar->execute();
+            $mensaje = "<div class='alert alert-success'>
+                <h5>Guardia Asignada Exitosamente</h5>
+                <p><strong>Policía:</strong> {$policia_info['apellido']}, {$policia_info['nombre']}</p>
+                <p><strong>Legajo:</strong> {$policia_info['legajo']}</p>
+                <p><strong>Grado:</strong> {$policia_info['grado']}</p>
+                <p><strong>Región:</strong> {$policia_info['region']}</p>
+                <p><strong>Tipo de día:</strong> {$tipo_dia}</p>
+                <p><strong>Próxima disponibilidad:</strong> {$periodo}</p>
+            </div>";
+        } else {
+            $dia_semana = date('w');
+            $region_requerida = ($dia_semana >= 1 && $dia_semana <= 4) ? 'CENTRAL' : 'REGIONAL';
+            $mensaje = "<div class='alert alert-warning'>No hay policías de la región {$region_requerida} disponibles para este lugar de guardia en este momento</div>";
         }
     }
     
-    // Generar PDF si hay datos
-    if (!empty($guardia_general)) {
-        generarPDFGuardia($guardia_general, 'general');
+    // Nueva acción para reemplazar personal
+    if ($action == 'reemplazar_personal') {
+        $fecha_guardia = $_POST['fecha_guardia'];
+        $lugar_id = $_POST['lugar_id'];
+        $nuevo_policia_id = $_POST['nuevo_policia_id'];
+        
+        // Buscar la guardia existente para esa fecha y lugar
+        $stmt_buscar = $conn->prepare("
+            SELECT gr.id, gr.policia_id 
+            FROM guardias_realizadas gr 
+            WHERE DATE(gr.fecha_inicio) = ? AND gr.lugar_guardia_id = ?
+        ");
+        $stmt_buscar->bind_param("si", $fecha_guardia, $lugar_id);
+        $stmt_buscar->execute();
+        $guardia_existente = $stmt_buscar->get_result()->fetch_assoc();
+        
+        if ($guardia_existente) {
+            // Liberar al policía anterior (resetear fecha_disponible)
+            $stmt_liberar = $conn->prepare("
+                UPDATE lista_guardias 
+                SET fecha_disponible = NULL 
+                WHERE policia_id = ?
+            ");
+            $stmt_liberar->bind_param("i", $guardia_existente['policia_id']);
+            $stmt_liberar->execute();
+            
+            // Actualizar la guardia con el nuevo policía
+            $stmt_actualizar = $conn->prepare("
+                UPDATE guardias_realizadas 
+                SET policia_id = ?, observaciones = CONCAT(observaciones, ' - Reemplazado el ', NOW()) 
+                WHERE id = ?
+            ");
+            $stmt_actualizar->bind_param("ii", $nuevo_policia_id, $guardia_existente['id']);
+            $stmt_actualizar->execute();
+            
+            // Rotar al nuevo policía al final de la lista
+            $stmt_rotar_nuevo = $conn->prepare("CALL RotarGuardiaFIFO(?)");
+            $stmt_rotar_nuevo->bind_param("i", $nuevo_policia_id);
+            $stmt_rotar_nuevo->execute();
+            
+            $mensaje = "<div class='alert alert-success'>Personal reemplazado exitosamente. El policía anterior queda disponible para futuras guardias.</div>";
+        } else {
+            $mensaje = "<div class='alert alert-danger'>No se encontró una guardia para la fecha y lugar especificados.</div>";
+        }
     }
     
-    $mensaje = "<div class='alert alert-success'>Guardia general generada exitosamente (1 persona por lugar)</div>";
+    // Nueva acción para generar guardia semanal
+    if ($action == 'generar_guardia_semanal') {
+        $guardias_semanales = [];
+        $fecha_inicio = $_POST['fecha_inicio']; // Tomar la fecha del formulario
+        $fecha_fin = date('Y-m-d', strtotime($fecha_inicio . ' +6 days')); // 7 días desde la fecha seleccionada
+        
+        // Obtener todos los lugares de guardia activos
+        $lugares = $conn->query("SELECT id, nombre FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
+        
+        while ($lugar = $lugares->fetch_assoc()) {
+            // Generar guardia para cada día de la semana
+            for ($i = 0; $i < 7; $i++) {
+                $fecha_guardia = date('Y-m-d', strtotime($fecha_inicio . " +$i days"));
+                $dia_semana = date('w', strtotime($fecha_guardia)); // 0=Domingo, 1=Lunes, ..., 6=Sábado
+                
+                // Determinar región requerida según el día
+                if ($dia_semana >= 0 && $dia_semana <= 4) { // Domingo a Jueves
+                    $region_requerida = 'Central';
+                } else { // Viernes y Sábado
+                    $region_requerida = 'Regional';
+                }
+                
+                // Buscar policía disponible de la región correspondiente
+                $stmt_policia = $conn->prepare("
+                    SELECT 
+                        p.id as policia_id,
+                        p.legajo,
+                        p.nombre,
+                        p.apellido,
+                        p.cin,
+                        p.telefono,
+                        g.nombre as grado,
+                        r.nombre as region,
+                        lg.posicion
+                    FROM lista_guardias lg
+                    JOIN policias p ON lg.policia_id = p.id
+                    JOIN grados g ON p.grado_id = g.id
+                    JOIN regiones r ON p.region_id = r.id
+                    WHERE p.activo = TRUE 
+                    AND p.lugar_guardia_id = ?
+                    AND r.nombre = ?
+                    AND (lg.fecha_disponible IS NULL OR lg.fecha_disponible <= ?)
+                    AND NOT EXISTS (
+                        SELECT 1 FROM ausencias a 
+                        WHERE a.policia_id = p.id 
+                        AND a.estado = 'APROBADA'
+                        AND ? BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, ?)
+                    )
+                    ORDER BY lg.posicion ASC, g.nivel_jerarquia ASC, p.legajo ASC
+                    LIMIT 1
+                ");
+                $stmt_policia->bind_param("issss", $lugar['id'], $region_requerida, $fecha_guardia, $fecha_guardia, $fecha_guardia);
+                $stmt_policia->execute();
+                $result_policia = $stmt_policia->get_result();
+                
+                if ($policia = $result_policia->fetch_assoc()) {
+                    // Registrar la guardia
+                    $stmt_guardia = $conn->prepare("
+                        INSERT INTO guardias_realizadas (policia_id, fecha_inicio, fecha_fin, lugar_guardia_id, observaciones) 
+                        VALUES (?, ?, ?, ?, 'Guardia semanal generada automáticamente')
+                    ");
+                    $fecha_inicio_guardia = $fecha_guardia . ' 06:00:00';
+                    $fecha_fin_guardia = date('Y-m-d H:i:s', strtotime($fecha_guardia . ' +1 day 06:00:00'));
+                    $stmt_guardia->bind_param("issi", $policia['policia_id'], $fecha_inicio_guardia, $fecha_fin_guardia, $lugar['id']);
+                    $stmt_guardia->execute();
+                    
+                    // Rotar al policía (moverlo al final de la lista con restricción de tiempo)
+                    $stmt_rotar = $conn->prepare("CALL RotarGuardiaFIFO(?)");
+                    $stmt_rotar->bind_param("i", $policia['policia_id']);
+                    $stmt_rotar->execute();
+                    
+                    // Agregar a la lista para el PDF
+                    $guardias_semanales[] = [
+                        'fecha' => $fecha_guardia,
+                        'dia_semana' => $dia_semana,
+                        'lugar' => $lugar['nombre'],
+                        'policia' => $policia,
+                        'region_requerida' => $region_requerida
+                    ];
+                }
+            }
+        }
+        
+        // Registrar la guardia semanal en la tabla
+        $stmt_semanal = $conn->prepare("
+            INSERT INTO guardias_semanales (fecha_inicio, fecha_fin, usuario_id) 
+            VALUES (?, ?, ?)
+        ");
+        $stmt_semanal->bind_param("ssi", $fecha_inicio, $fecha_fin, $_SESSION['usuario_id']);
+        $stmt_semanal->execute();
+        
+        // Generar PDF
+        if (!empty($guardias_semanales)) {
+            generarPDFGuardiaSemanal($guardias_semanales);
+        } else {
+            $mensaje = "<div class='alert alert-warning'>No se pudieron asignar guardias para esta semana. Verifique la disponibilidad del personal.</div>";
+        }
+    }
 }
 
-// Procesar generación de guardia con restricciones de región
-if ($_POST && isset($_POST['action']) && $_POST['action'] == 'generar_guardia') {
-    $fechaActual = FechaSistema::obtenerFechaSQL();
-    
-    $sql = "SELECT 
-            lg.nombre as lugar,
+$lugares_guardias = $conn->query("SELECT * FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
+
+// Función para obtener policías por lugar de guardia ordenados por FIFO
+function obtenerPoliciasPorLugar($conn, $lugar_id, $limite = 7) {
+    $stmt = $conn->prepare("
+        SELECT 
             p.id,
+            p.legajo,
             p.nombre,
             p.apellido,
             p.cin,
             p.telefono,
             g.nombre as grado,
-            p.region,
+            g.nivel_jerarquia,
+            r.nombre as region,
             lg.posicion,
-            lg.ultima_guardia_fecha
-        FROM (
-            SELECT 
-                lguar.id as lugar_id,
-                lguar.nombre,
-                MIN(lista.posicion) as min_posicion
-            FROM lugares_guardias lguar
-            JOIN lista_guardias lista ON lguar.id = lista.policia_id
-            JOIN policias pol ON lista.policia_id = pol.id
-            WHERE lguar.activo = 1
-            AND pol.activo = 1
-            AND NOT EXISTS (
-                SELECT 1 FROM ausencias a 
-                WHERE a.policia_id = pol.id 
-                AND a.estado = 'APROBADA' 
-                AND '$fechaActual' BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, '$fechaActual')
-            )
-            AND (
-                (pol.region = 'REGIONAL' AND (
-                    lista.ultima_guardia_fecha IS NULL OR 
-                    DATE_FORMAT(lista.ultima_guardia_fecha, '%Y-%m') != DATE_FORMAT('$fechaActual', '%Y-%m')
-                ))
-                OR 
-                (pol.region = 'CENTRAL' AND (
-                    lista.ultima_guardia_fecha IS NULL OR 
-                    DATEDIFF('$fechaActual', lista.ultima_guardia_fecha) >= 15
-                ))
-            )
-            GROUP BY lguar.id, lguar.nombre
-        ) lg
-        JOIN lista_guardias lista ON lg.min_posicion = lista.posicion
-        JOIN policias p ON lista.policia_id = p.id
+            lg.ultima_guardia_fecha,
+            lg.fecha_disponible,
+            CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM ausencias a 
+                    WHERE a.policia_id = p.id 
+                    AND a.estado = 'APROBADA'
+                    AND CURDATE() BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, CURDATE())
+                ) THEN 'AUSENTE'
+                WHEN lg.fecha_disponible IS NOT NULL AND lg.fecha_disponible > CURDATE() THEN 'NO DISPONIBLE'
+                ELSE 'DISPONIBLE'
+            END as disponibilidad,
+            CASE 
+                WHEN lg.fecha_disponible IS NOT NULL AND lg.fecha_disponible > CURDATE() 
+                THEN lg.fecha_disponible
+                ELSE NULL
+            END as proxima_fecha_disponible
+        FROM lista_guardias lg
+        JOIN policias p ON lg.policia_id = p.id
         JOIN grados g ON p.grado_id = g.id
-        WHERE p.lugar_guardia_id = lg.lugar_id";
-    
-    $result = $conn->query($sql);
-    $guardiaGenerada = [];
-    $guardiaParaPDF = [];
-    
-    if ($result && $result->num_rows > 0) {
-        while ($row = $result->fetch_assoc()) {
-            if ($row['id']) {
-                $guardiaGenerada[] = $row;
-                $guardiaParaPDF[$row['lugar']] = $row;
-                
-                // Actualizar fecha de última guardia
-                $updateSql = "UPDATE lista_guardias 
-                             SET ultima_guardia_fecha = '$fechaActual' 
-                             WHERE policia_id = " . $row['id'];
-                $conn->query($updateSql);
-                
-                // Rotar la lista
-                $rotateSql = "CALL RotarGuardia(" . $row['id'] . ")";
-                $conn->query($rotateSql);
-            }
-        }
-        
-        if (!empty($guardiaGenerada)) {
-            // Generar PDF
-            generarPDFGuardia($guardiaParaPDF, 'restricciones');
-            $mensaje = "Guardia generada exitosamente para el " . FechaSistema::obtenerFechaFormateada();
-        } else {
-            $mensaje = "No hay policías disponibles para generar guardia en este momento.";
-        }
-    }
-}
-
-// Obtener lugares de guardias con sus policías
-$lugares_guardias = $conn->query("SELECT id, nombre, zona, descripcion FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
-
-// Función para obtener policías por lugar con restricciones de región
-function obtenerPoliciasPorLugar($conn, $lugar_id, $limite = 5) {
-    $fechaActual = FechaSistema::obtenerFechaSQL();
-    
-    $sql = "SELECT 
-                p.id as policia_id,
-                p.nombre,
-                p.apellido,
-                p.cin,
-                p.telefono,
-                g.nombre as grado,
-                g.nivel_jerarquia,
-                p.antiguedad_dias,
-                p.region,
-                lg.posicion,
-                lg.ultima_guardia_fecha,
-                CASE 
-                    WHEN EXISTS (
-                        SELECT 1 FROM ausencias a 
-                        WHERE a.policia_id = p.id 
-                        AND a.estado = 'APROBADA' 
-                        AND '$fechaActual' BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, '$fechaActual')
-                    ) THEN 'AUSENTE'
-                    WHEN p.region = 'REGIONAL' AND lg.ultima_guardia_fecha IS NOT NULL 
-                         AND DATE_FORMAT(lg.ultima_guardia_fecha, '%Y-%m') = DATE_FORMAT('$fechaActual', '%Y-%m') 
-                    THEN 'NO_DISPONIBLE_MES'
-                    WHEN p.region = 'CENTRAL' AND lg.ultima_guardia_fecha IS NOT NULL 
-                         AND DATEDIFF('$fechaActual', lg.ultima_guardia_fecha) < 15 
-                    THEN 'NO_DISPONIBLE_15_DIAS'
-                    ELSE 'DISPONIBLE'
-                END as disponibilidad,
-                CASE 
-                    WHEN p.region = 'REGIONAL' AND lg.ultima_guardia_fecha IS NOT NULL 
-                    THEN DATE_FORMAT(DATE_ADD(lg.ultima_guardia_fecha, INTERVAL 1 MONTH), '%d/%m/%Y')
-                    WHEN p.region = 'CENTRAL' AND lg.ultima_guardia_fecha IS NOT NULL 
-                    THEN DATE_FORMAT(DATE_ADD(lg.ultima_guardia_fecha, INTERVAL 15 DAY), '%d/%m/%Y')
-                    ELSE 'Disponible ahora'
-                END as proxima_fecha_disponible
-            FROM lista_guardias lg
-            JOIN policias p ON lg.policia_id = p.id
-            JOIN grados g ON p.grado_id = g.id
-            WHERE p.activo = TRUE 
-            AND p.lugar_guardia_id = ?
-            ORDER BY lg.posicion
-            LIMIT ?";
-    
-    $stmt = $conn->prepare($sql);
+        JOIN regiones r ON p.region_id = r.id
+        WHERE p.activo = TRUE AND p.lugar_guardia_id = ?
+        ORDER BY lg.posicion ASC
+        LIMIT ?
+    ");
     $stmt->bind_param("ii", $lugar_id, $limite);
     $stmt->execute();
     return $stmt->get_result();
 }
 
-// Función para contar policías por lugar
+// Función para contar total de policías por lugar
 function contarPoliciasPorLugar($conn, $lugar_id) {
-    $sql = "SELECT COUNT(*) as total 
-            FROM lista_guardias lg
-            JOIN policias p ON lg.policia_id = p.id
-            WHERE p.activo = TRUE 
-            AND p.lugar_guardia_id = ?";
-    
-    $stmt = $conn->prepare($sql);
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) as total
+        FROM policias p
+        WHERE p.activo = TRUE AND p.lugar_guardia_id = ?
+    ");
     $stmt->bind_param("i", $lugar_id);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -471,475 +277,679 @@ function contarPoliciasPorLugar($conn, $lugar_id) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lista de Guardias - Sistema RH</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         .main-content {
+            background: #f8f9fa;
+            min-height: 100vh;
             padding: 20px;
         }
         .page-title {
             color: #2c3e50;
             margin-bottom: 30px;
-            border-bottom: 3px solid #3498db;
-            padding-bottom: 10px;
+            font-weight: 600;
+            font-size: 1.5rem;
         }
-        .guardia-actual-card .card-header {
-            background: linear-gradient(135deg, #e74c3c, #c0392b);
+        .search-container {
+            background: transparent;
+            border: none;
+            padding: 0;
+            margin: 0;
+            display: inline-block;
         }
-        .guardia-general-card .card-header {
-            background: linear-gradient(135deg, #3498db, #2980b9);
+        .search-input {
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 14px;
+            width: 200px;
+            transition: all 0.2s;
+            background: white;
         }
-        .guardia-semanal-card .card-header {
-            background: linear-gradient(135deg, #27ae60, #229954);
+        .search-input:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.1rem rgba(13,110,253,.15);
+            outline: none;
         }
-        .posicion-badge {
-            font-size: 0.9em;
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .search-container {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .search-input {
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            padding: 12px 20px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        .search-input:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+        }
+        .lugar-guardia-section {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+            overflow: hidden;
+        }
+        .lugar-header {
+            background: linear-gradient(45deg, #007bff, #0056b3);
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .lugar-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            margin: 0;
+        }
+        .btn-asignar {
+            background: rgba(255,255,255,0.2);
+            border: 2px solid white;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .btn-asignar:hover {
+            background: white;
+            color: #007bff;
+            transform: scale(1.05);
+        }
+        .policias-table {
+            width: 100%;
+            margin: 0;
+        }
+        .policias-table th {
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+            padding: 12px 8px;
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9rem;
+        }
+        .policias-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #dee2e6;
+            vertical-align: middle;
+        }
+        .policias-table tr:hover {
+            background: #f8f9fa;
+        }
+        .policias-table tr.primero {
+            background: #f8fff9;
+            border-left: 4px solid #28a745;
+        }
+        .policias-table tr.no-disponible {
+            background: #fff5f5;
+            opacity: 0.7;
+        }
+        .legajo-badge {
+            background: #007bff;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
             font-weight: bold;
+            font-size: 0.8em;
         }
-        .collapse-toggle {
-            cursor: pointer;
-            transition: all 0.3s ease;
+        .primero .legajo-badge {
+            background: #28a745;
         }
-        .collapse-toggle:hover {
-            background-color: #f8f9fa;
+        .disponibilidad-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
         }
-        .collapse-content {
-            display: none;
+        .disponible {
+            background: #d4edda;
+            color: #155724;
         }
-        .collapse-content.show {
-            display: block;
+        .no-disponible-badge {
+            background: #f8d7da;
+            color: #721c24;
         }
-        .badge-ausente {
-            background-color: #dc3545;
+        .posicion-numero {
+            background: #6c757d;
+            color: white;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.8em;
         }
-        .badge-no-disponible-mes {
-            background-color: #fd7e14;
+        .primero .posicion-numero {
+            background: #28a745;
         }
-        .badge-no-disponible-15-dias {
-            background-color: #ffc107;
-            color: #000;
+        .ver-mas-container {
+            text-align: center;
+            padding: 20px;
+            border-top: 1px solid #e9ecef;
         }
-        .badge-disponible {
-            background-color: #28a745;
+        .btn-ver-mas {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 10px 30px;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .btn-ver-mas:hover {
+            background: #5a6268;
+            transform: scale(1.05);
+        }
+        .no-policias {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+        .info-panel {
+            background: linear-gradient(45deg, #17a2b8, #138496);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
         }
     </style>
 </head>
 <body>
     <div class="container-fluid">
         <div class="row">
-            <?php 
-            $_GET['page'] = 'guardias';
-            include '../inc/sidebar.php'; 
-            ?>
-
-            <!-- Main Content -->
+            <!-- Sidebar -->
+            <?php include '../inc/sidebar.php'; ?>
+            
+            <!-- Contenido principal -->
             <div class="col-md-9 col-lg-10">
                 <div class="main-content">
-                    <h1 class="page-title">
-                        <i class="fas fa-list-ul"></i> Lista de Guardias por Lugares
-                    </h1>
-
-                    <?php if (isset($mensaje)) echo $mensaje; ?>
-
-                    <!-- Botones de Acción -->
-                    <div class="mb-4 no-print">
-                        <button type="button" class="btn btn-danger btn-lg" onclick="generarGuardia('generar_guardia_actual')">
-                            <i class="fas fa-shield-alt"></i> Generar Guardia
-                        </button>
-                        
-                        <button type="button" class="btn btn-success btn-lg" onclick="generarGuardia('generar_guardia_semanal')" style="margin-left: 10px;">
-                            <i class="fas fa-calendar-week"></i> Generar Guardia Semanal
-                        </button>
-                        
-                        <form method="POST" style="display: inline; margin-left: 10px;">
-                            <input type="hidden" name="action" value="reorganizar">
-                            <button type="submit" class="btn btn-info" onclick="return confirm('¿Está seguro de reorganizar la lista de guardias?')">
-                                <i class="fas fa-sync-alt"></i> Resetear Guardias
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h1 class="page-title">
+                            <i class="fas fa-list-ul"></i> Lista de Guardias
+                        </h1>
+                        <div>
+                            <!-- Botón para generar guardia semanal -->
+                            <button type="button" class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#modalGenerarGuardiaSemanal">
+                                <i class="fas fa-calendar-week"></i> Generar Guardia Semanal
                             </button>
-                        </form>
-                    </div>
-
-                    <!-- Mostrar Guardia Actual si fue generada -->
-                    <?php if (isset($guardia_actual) && !empty($guardia_actual)): ?>
-                    <div class="card guardia-actual-card mb-4">
-                        <div class="card-header text-white">
-                            <h5><i class="fas fa-shield-alt"></i> Guardia Actual Generada - <?php echo date('d/m/Y H:i'); ?></h5>
+                            <!-- Solo botón para reemplazar personal -->
+                            <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#modalReemplazarPersonal">
+                                <i class="fas fa-user-edit"></i> Reemplazar Personal
+                            </button>
                         </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <?php foreach ($guardia_actual as $lugar_nombre => $policia): ?>
-                                <div class="col-md-6 mb-3">
-                                    <div class="card border-warning">
-                                        <div class="card-header bg-warning text-dark">
-                                            <h6 class="mb-0"><i class="fas fa-map-marker-alt"></i> <?php echo $lugar_nombre; ?></h6>
+                    </div>
+                    
+                    <?php if (isset($mensaje)) echo $mensaje; ?>
+                    
+                    <!-- Modal para reemplazar personal -->
+                    <div class="modal fade" id="modalReemplazarPersonal" tabindex="-1" aria-labelledby="modalReemplazarPersonalLabel" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="modalReemplazarPersonalLabel">
+                                        <i class="fas fa-user-edit"></i> Reemplazar Personal de Guardia
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <form method="POST" id="formReemplazarPersonal">
+                                    <div class="modal-body">
+                                        <input type="hidden" name="action" value="reemplazar_personal">
+                                        
+                                        <div class="mb-3">
+                                            <label for="fecha_guardia" class="form-label">Fecha de la Guardia</label>
+                                            <input type="date" class="form-control" id="fecha_guardia" name="fecha_guardia" required>
                                         </div>
-                                        <div class="card-body">
-                                            <h5 class="card-title"><?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?></h5>
-                                            <p class="card-text">
-                                                <strong>Grado:</strong> <?php echo $policia['grado']; ?><br>
-                                                <strong>CIN:</strong> <?php echo $policia['cin']; ?><br>
-                                                <strong>Teléfono:</strong> <?php echo $policia['telefono'] ?: 'No registrado'; ?><br>
-                                                <strong>Posición anterior:</strong> #<?php echo $policia['posicion']; ?>
-                                            </p>
+                                        
+                                        <div class="mb-3">
+                                            <label for="lugar_guardia_reemplazo" class="form-label">Lugar de Guardia</label>
+                                            <select class="form-control" id="lugar_guardia_reemplazo" name="lugar_id" required>
+                                                <option value="">Seleccione un lugar</option>
+                                                <?php 
+                                                $lugares_reemplazo = $conn->query("SELECT * FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
+                                                while ($lugar = $lugares_reemplazo->fetch_assoc()): ?>
+                                                    <option value="<?php echo $lugar['id']; ?>"><?php echo htmlspecialchars($lugar['nombre']); ?></option>
+                                                <?php endwhile; ?>
+                                            </select>
+                                        </div>
+                                        
+                                        <div id="guardiaActualInfo" class="alert alert-info" style="display: none;">
+                                            <h6>Guardia Actual:</h6>
+                                            <div id="guardiaActualTexto"></div>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label for="nuevo_policia" class="form-label">Nuevo Policía</label>
+                                            <select class="form-control" id="nuevo_policia" name="nuevo_policia_id" required>
+                                                <option value="">Seleccione un policía</option>
+                                            </select>
                                         </div>
                                     </div>
-                                </div>
-                                <?php endforeach; ?>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                        <button type="submit" class="btn btn-warning">Reemplazar Personal</button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
                     </div>
-                    <?php endif; ?>
-
-                    <?php if (isset($guardia_general) && !empty($guardia_general)): ?>
-                    <div class="card guardia-general-card mb-4">
-                        <div class="card-header text-white">
-                            <h5><i class="fas fa-star"></i> Guardia General Generada</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <?php foreach ($guardia_general as $lugar_nombre => $policias): ?>
-                                <div class="col-md-6 mb-3">
-                                    <h6 class="text-dark"><i class="fas fa-map-marker-alt"></i> <?php echo $lugar_nombre; ?></h6>
-                                    <ul class="list-group list-group-flush">
-                                        <?php foreach ($policias as $policia): ?>
-                                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                                            <span>
-                                                <strong><?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?></strong><br>
-                                                <small class="text-muted"><?php echo $policia['grado'] . ' - CIN: ' . $policia['cin']; ?></small>
-                                            </span>
-                                            <span class="badge bg-primary posicion-badge">#<?php echo $policia['posicion']; ?></span>
-                                        </li>
-                                        <?php endforeach; ?>
-                                    </ul>
+                    
+               
+                    
+                    <!-- Lista de lugares de guardias -->
+                    <div id="lugaresContainer">
+                        <?php while ($lugar = $lugares_guardias->fetch_assoc()): ?>
+                            <div class="lugar-guardia-section" data-lugar-id="<?php echo $lugar['id']; ?>" data-lugar="<?php echo strtolower($lugar['nombre']); ?>">
+                                <div class="lugar-header">
+                                    <h3 class="lugar-title">
+                                        <i class="fas fa-map-marker-alt"></i> 
+                                        <?php echo htmlspecialchars($lugar['nombre']); ?>
+                                    </h3>
+                                    <form method="POST" style="display: inline;">
+                                        <input type="hidden" name="action" value="generar_guardia">
+                                        <input type="hidden" name="lugar_id" value="<?php echo $lugar['id']; ?>">
+                                        <button type="submit" class="btn btn-asignar">
+                                            <i class="fas fa-plus-circle"></i> Asignar Guardia
+                                        </button>
+                                    </form>
                                 </div>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-
-                    <?php while ($lugar = $lugares_guardias->fetch_assoc()): ?>
-                    <?php 
-                        $policias_lugar = obtenerPoliciasPorLugar($conn, $lugar['id'], 5);
-                        $total_policias = contarPoliciasPorLugar($conn, $lugar['id']);
-                    ?>
-                    <div class="card mb-4">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">
-                                <i class="fas fa-map-marker-alt"></i> 
-                                <?php echo $lugar['nombre']; ?>
-                                <?php if ($lugar['zona']): ?>
-                                <small class="text-muted"> - <?php echo $lugar['zona']; ?></small>
-                                <?php endif; ?>
-                            </h5>
-                            <span class="badge bg-secondary"><?php echo $total_policias; ?> policías</span>
-                        </div>
-                        <div class="card-body">
-                            <?php if ($lugar['descripcion']): ?>
-                            <p class="text-muted mb-3"><?php echo $lugar['descripcion']; ?></p>
-                            <?php endif; ?>
-                            
-                            <div class="table-responsive">
-                                <table class="table table-sm">
-                                    <thead>
-                                        <tr>
-                                            <th>Pos.</th>
-                                            <th>CIN</th>
-                                            <th>Nombre Completo</th>
-                                            <th>Grado</th>
-                                            <th>Región</th>
-                                            <th>Teléfono</th>
-                                            <th>Antigüedad</th>
-                                            <th>Última Guardia</th>
-                                            <th>Estado</th>
-                                            <th>Próxima Disponible</th>
-                                            <th class="no-print">Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php 
-                                        $contador_fila = 0;
-                                        while ($policia = $policias_lugar->fetch_assoc()): 
-                                            $contador_fila++;
-                                            
-                                            // Determinar si es guardia activa (primera posición disponible)
-                                            $es_guardia_activa = ($contador_fila == 1 && $policia['disponibilidad'] == 'DISPONIBLE');
-                                            
-                                            // Determinar clase CSS para el estado
-                                            $badge_class = '';
-                                            switch($policia['disponibilidad']) {
-                                                case 'AUSENTE':
-                                                    $badge_class = 'badge-ausente';
-                                                    break;
-                                                case 'NO_DISPONIBLE_MES':
-                                                    $badge_class = 'badge-no-disponible-mes';
-                                                    break;
-                                                case 'NO_DISPONIBLE_15_DIAS':
-                                                    $badge_class = 'badge-no-disponible-15-dias';
-                                                    break;
-                                                case 'DISPONIBLE':
-                                                    $badge_class = 'badge-disponible';
-                                                    break;
-                                            }
-                                        ?>
-                                        <tr class="<?php echo $es_guardia_activa ? 'table-warning' : ''; ?>">
-                                            <td>
-                                                <span class="badge <?php echo $es_guardia_activa ? 'bg-warning text-dark' : 'bg-primary'; ?> posicion-badge">
-                                                    #<?php echo $policia['posicion']; ?>
-                                                    <?php if ($es_guardia_activa): ?>
-                                                    <i class="fas fa-star ms-1"></i>
-                                                    <?php endif; ?>
-                                                </span>
-                                            </td>
-                                            <td><?php echo $policia['cin']; ?></td>
-                                            <td>
-                                                <?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?>
-                                                <?php if ($es_guardia_activa): ?>
-                                                <span class="badge bg-warning text-dark ms-2">GUARDIA ACTUAL</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td><?php echo $policia['grado']; ?></td>
-                                            <td>
-                                                <span class="badge <?php echo $policia['region'] == 'REGIONAL' ? 'bg-info' : 'bg-secondary'; ?>">
-                                                    <?php echo $policia['region']; ?>
-                                                </span>
-                                            </td>
-                                            <td><?php echo $policia['telefono'] ?: '<span class="text-muted">No registrado</span>'; ?></td>
-                                            <td><?php echo number_format($policia['antiguedad_dias']); ?> días</td>
-                                            <td>
-                                                <?php if ($policia['ultima_guardia_fecha']): ?>
-                                                    <?php echo date('d/m/Y', strtotime($policia['ultima_guardia_fecha'])); ?>
-                                                <?php else: ?>
-                                                    <span class="text-muted">Nunca</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td>
-                                                <span class="badge <?php echo $badge_class; ?>">
-                                                    <?php 
-                                                    switch($policia['disponibilidad']) {
-                                                        case 'AUSENTE':
-                                                            echo 'AUSENTE';
-                                                            break;
-                                                        case 'NO_DISPONIBLE_MES':
-                                                            echo 'NO DISP. MES';
-                                                            break;
-                                                        case 'NO_DISPONIBLE_15_DIAS':
-                                                            echo 'NO DISP. 15D';
-                                                            break;
-                                                        case 'DISPONIBLE':
-                                                            echo 'DISPONIBLE';
-                                                            break;
-                                                    }
-                                                    ?>
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <small class="text-muted"><?php echo $policia['proxima_fecha_disponible']; ?></small>
-                                            </td>
-                                            <td class="no-print">
-                                                <?php if ($policia['disponibilidad'] == 'DISPONIBLE'): ?>
-                                                <form method="POST" style="display: inline;">
-                                                    <input type="hidden" name="action" value="rotar">
-                                                    <input type="hidden" name="policia_id" value="<?php echo $policia['policia_id']; ?>">
-                                                    <button type="submit" class="btn btn-sm btn-outline-success" 
-                                                            onclick="return confirm('¿Confirma que este policía realizó la guardia?')"
-                                                            title="Marcar como guardia realizada">
-                                                        <i class="fas fa-check"></i>
-                                                    </button>
-                                                </form>
-                                                <?php else: ?>
-                                                <span class="text-muted">-</span>
-                                                <?php endif; ?>
-                                            </td>
-                                        </tr>
-                                        <?php endwhile; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                            
-                            <?php if ($total_policias > 5): ?>
-                            <div id="lugar_<?php echo $lugar['id']; ?>" class="collapse-content">
-                                <hr>
-                                <h6 class="text-muted">Policías adicionales:</h6>
-                                <div class="table-responsive">
-                                    <table class="table table-sm">
+                                
+                                <?php 
+                                $policias = obtenerPoliciasPorLugar($conn, $lugar['id']);
+                                $total_policias = contarPoliciasPorLugar($conn, $lugar['id']);
+                                ?>
+                                
+                                <?php if ($policias->num_rows > 0): ?>
+                                    <table class="table policias-table mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th width="8%">Pos.</th>
+                                                <th width="12%">Legajo</th>
+                                                <th width="25%">Apellido y Nombre</th>
+                                                <th width="15%">Grado</th>
+                                                <th width="12%">Región</th>
+                                                <th width="15%">Disponibilidad</th>
+                                                <th width="13%">Próxima Fecha</th>
+                                            </tr>
+                                        </thead>
                                         <tbody>
                                             <?php 
-                                            $policias_adicionales = obtenerPoliciasPorLugar($conn, $lugar['id'], 1000);
-                                            $contador = 0;
-                                            while ($policia = $policias_adicionales->fetch_assoc()): 
-                                                $contador++;
-                                                if ($contador <= 5) continue;
-                                                
-                                                // Determinar clase CSS para el estado
-                                                $badge_class = '';
-                                                switch($policia['disponibilidad']) {
-                                                    case 'AUSENTE':
-                                                        $badge_class = 'badge-ausente';
-                                                        break;
-                                                    case 'NO_DISPONIBLE_MES':
-                                                        $badge_class = 'badge-no-disponible-mes';
-                                                        break;
-                                                    case 'NO_DISPONIBLE_15_DIAS':
-                                                        $badge_class = 'badge-no-disponible-15-dias';
-                                                        break;
-                                                    case 'DISPONIBLE':
-                                                        $badge_class = 'badge-disponible';
-                                                        break;
+                                            $posicion = 1;
+                                            while ($policia = $policias->fetch_assoc()): 
+                                                $es_primero = ($posicion == 1);
+                                                $no_disponible = ($policia['disponibilidad'] != 'DISPONIBLE');
+                                                $clase_fila = '';
+                                                if ($es_primero && !$no_disponible) {
+                                                    $clase_fila = 'primero';
+                                                } elseif ($no_disponible) {
+                                                    $clase_fila = 'no-disponible';
                                                 }
                                             ?>
-                                            <tr>
-                                                <td>
-                                                    <span class="badge bg-primary posicion-badge">#<?php echo $policia['posicion']; ?></span>
-                                                </td>
-                                                <td><?php echo $policia['cin']; ?></td>
-                                                <td><?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?></td>
-                                                <td><?php echo $policia['grado']; ?></td>
-                                                <td>
-                                                    <span class="badge <?php echo $policia['region'] == 'REGIONAL' ? 'bg-info' : 'bg-secondary'; ?>">
-                                                        <?php echo $policia['region']; ?>
-                                                    </span>
-                                                </td>
-                                                <td><?php echo $policia['telefono'] ?: '<span class="text-muted">No registrado</span>'; ?></td>
-                                                <td><?php echo number_format($policia['antiguedad_dias']); ?> días</td>
-                                                <td>
-                                                    <?php if ($policia['ultima_guardia_fecha']): ?>
-                                                        <?php echo date('d/m/Y', strtotime($policia['ultima_guardia_fecha'])); ?>
-                                                    <?php else: ?>
-                                                        <span class="text-muted">Nunca</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td>
-                                                    <span class="badge <?php echo $badge_class; ?>">
+                                                <tr class="<?php echo $clase_fila; ?>">
+                                                    <td>
+                                                        <span class="posicion-numero"><?php echo $posicion; ?></span>
+                                                    </td>
+                                                    <td>
+                                                        <span class="legajo-badge"><?php echo htmlspecialchars($policia['legajo']); ?></span>
+                                                    </td>
+                                                    <td>
+                                                        <strong><?php echo htmlspecialchars($policia['apellido'] . ', ' . $policia['nombre']); ?></strong>
+                                                        <?php if ($policia['cin']): ?>
+                                                            <br><small class="text-muted">CIN: <?php echo htmlspecialchars($policia['cin']); ?></small>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td><?php echo htmlspecialchars($policia['grado']); ?></td>
+                                                    <td>
+                                                        <span class="badge bg-<?php echo ($policia['region'] == 'CENTRAL') ? 'primary' : 'success'; ?>">
+                                                            <?php echo htmlspecialchars($policia['region']); ?>
+                                                        </span>
+                                                    </td>
+                                                    <td>
                                                         <?php 
+                                                        $clase_disponibilidad = '';
                                                         switch($policia['disponibilidad']) {
-                                                            case 'AUSENTE':
-                                                                echo 'AUSENTE';
-                                                                break;
-                                                            case 'NO_DISPONIBLE_MES':
-                                                                echo 'NO DISP. MES';
-                                                                break;
-                                                            case 'NO_DISPONIBLE_15_DIAS':
-                                                                echo 'NO DISP. 15D';
-                                                                break;
                                                             case 'DISPONIBLE':
-                                                                echo 'DISPONIBLE';
+                                                                $clase_disponibilidad = 'disponible';
+                                                                break;
+                                                            case 'NO DISPONIBLE':
+                                                            case 'AUSENTE':
+                                                                $clase_disponibilidad = 'no-disponible-badge';
                                                                 break;
                                                         }
                                                         ?>
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <small class="text-muted"><?php echo $policia['proxima_fecha_disponible']; ?></small>
-                                                </td>
-                                                <td class="no-print">
-                                                    <?php if ($policia['disponibilidad'] == 'DISPONIBLE'): ?>
-                                                    <form method="POST" style="display: inline;">
-                                                        <input type="hidden" name="action" value="rotar">
-                                                        <input type="hidden" name="policia_id" value="<?php echo $policia['policia_id']; ?>">
-                                                        <button type="submit" class="btn btn-sm btn-outline-success" 
-                                                                onclick="return confirm('¿Confirma que este policía realizó la guardia?')"
-                                                                title="Marcar como guardia realizada">
-                                                            <i class="fas fa-check"></i>
-                                                        </button>
-                                                    </form>
-                                                    <?php else: ?>
-                                                    <span class="text-muted">-</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                            </tr>
-                                            <?php endwhile; ?>
+                                                        <span class="disponibilidad-badge <?php echo $clase_disponibilidad; ?>">
+                                                            <?php echo $policia['disponibilidad']; ?>
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <?php if ($policia['proxima_fecha_disponible']): ?>
+                                                            <small><?php echo date('d/m/Y', strtotime($policia['proxima_fecha_disponible'])); ?></small>
+                                                        <?php else: ?>
+                                                            <small class="text-muted">-</small>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                </tr>
+                                            <?php 
+                                            $posicion++;
+                                            endwhile; ?>
                                         </tbody>
                                     </table>
-                                </div>
+                                    
+                                    <?php if ($total_policias > 7): ?>
+                                        <div class="ver-mas-container">
+                                            <button class="btn btn-ver-mas" data-total="<?php echo $total_policias; ?>" data-expanded="false" onclick="verMasPolicias(<?php echo $lugar['id']; ?>)">
+                                                <i class="fas fa-eye"></i> Ver todos los policías (<?php echo $total_policias; ?> total)
+                                            </button>
+                                        </div>
+                                    <?php endif; ?>
+                                    
+                                <?php else: ?>
+                                    <div class="no-policias">
+                                        <i class="fas fa-exclamation-circle fa-3x mb-3"></i>
+                                        <h5>No hay policías asignados</h5>
+                                        <p>No se encontraron policías asignados a este lugar de guardia.</p>
+                                    </div>
+                                <?php endif; ?>
                             </div>
-                            
-                            <div class="text-center mt-3">
-                                <button class="btn btn-outline-secondary btn-sm collapse-toggle" 
-                                        onclick="toggleCollapse('lugar_<?php echo $lugar['id']; ?>')">
-                                    <i class="fas fa-chevron-down"></i> Ver todos los policías (<?php echo $total_policias; ?>)
-                                </button>
-                            </div>
-                            <?php endif; ?>
-                        </div>
+                        <?php endwhile; ?>
                     </div>
-                    <?php endwhile; ?>
-
-                   
                 </div>
             </div>
         </div>
     </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function toggleCollapse(elementId) {
-            const element = document.getElementById(elementId);
-            const button = element.nextElementSibling.querySelector('.collapse-toggle');
-            const icon = button.querySelector('i');
+        // Función de búsqueda
+        document.getElementById('searchInput').addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            const lugares = document.querySelectorAll('.lugar-guardia-section');
             
-            if (element.classList.contains('show')) {
-                element.classList.remove('show');
-                icon.className = 'fas fa-chevron-down';
-                button.innerHTML = '<i class="fas fa-chevron-down"></i> Ver todos los policías';
+            lugares.forEach(function(lugar) {
+                const nombreLugar = lugar.getAttribute('data-lugar');
+                if (nombreLugar.includes(searchTerm)) {
+                    lugar.style.display = 'block';
+                } else {
+                    lugar.style.display = 'none';
+                }
+            });
+        });
+        
+        // Función para ver más policías
+        function verMasPolicias(lugarId) {
+            const container = document.querySelector(`[data-lugar-id="${lugarId}"]`);
+            const btnVerMas = container.querySelector('.btn-ver-mas');
+            const tbody = container.querySelector('.policias-table tbody');
+            
+            if (btnVerMas.dataset.expanded === 'true') {
+                // Contraer - mostrar solo los primeros 7
+                const filas = tbody.querySelectorAll('tr');
+                filas.forEach((fila, index) => {
+                    if (index >= 7) {
+                        fila.style.display = 'none';
+                    }
+                });
+                btnVerMas.innerHTML = '<i class="fas fa-eye"></i> Ver todos los policías (' + btnVerMas.dataset.total + ' total)';
+                btnVerMas.dataset.expanded = 'false';
             } else {
-                element.classList.add('show');
-                icon.className = 'fas fa-chevron-up';
-                button.innerHTML = '<i class="fas fa-chevron-up"></i> Ocultar policías adicionales';
+                // Expandir - cargar y mostrar todos los policías
+                fetch('api/obtener_todos_policias.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'lugar_id=' + lugarId
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Limpiar tabla actual
+                        tbody.innerHTML = '';
+                        
+                        // Agregar todos los policías
+                        data.policias.forEach((policia, index) => {
+                            const posicion = index + 1;
+                            const esPrimero = posicion === 1;
+                            const noDisponible = policia.disponibilidad !== 'DISPONIBLE';
+                            let claseFila = '';
+                            
+                            if (esPrimero && !noDisponible) {
+                                claseFila = 'primero';
+                            } else if (noDisponible) {
+                                claseFila = 'no-disponible';
+                            }
+                            
+                            const regionBadgeClass = policia.region === 'CENTRAL' ? 'primary' : 'success';
+                            let disponibilidadClass = '';
+                            switch(policia.disponibilidad) {
+                                case 'DISPONIBLE':
+                                    disponibilidadClass = 'disponible';
+                                    break;
+                                case 'NO DISPONIBLE':
+                                case 'AUSENTE':
+                                    disponibilidadClass = 'no-disponible-badge';
+                                    break;
+                            }
+                            
+                            const proximaFecha = policia.proxima_fecha_disponible ? 
+                                new Date(policia.proxima_fecha_disponible).toLocaleDateString('es-ES') : '-';
+                            
+                            const fila = `
+                                <tr class="${claseFila}">
+                                    <td><span class="posicion-numero">${posicion}</span></td>
+                                    <td><span class="legajo-badge">${policia.legajo}</span></td>
+                                    <td>
+                                        <strong>${policia.apellido}, ${policia.nombre}</strong>
+                                        ${policia.cin ? `<br><small class="text-muted">CIN: ${policia.cin}</small>` : ''}
+                                    </td>
+                                    <td>${policia.grado}</td>
+                                    <td><span class="badge bg-${regionBadgeClass}">${policia.region}</span></td>
+                                    <td><span class="disponibilidad-badge ${disponibilidadClass}">${policia.disponibilidad}</span></td>
+                                    <td><small class="${policia.proxima_fecha_disponible ? '' : 'text-muted'}">${proximaFecha}</small></td>
+                                </tr>
+                            `;
+                            tbody.innerHTML += fila;
+                        });
+                        
+                        btnVerMas.innerHTML = '<i class="fas fa-eye-slash"></i> Ver menos';
+                        btnVerMas.dataset.expanded = 'true';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error al cargar los policías');
+                });
             }
+        }
+        
+        // Prevenir envío accidental del formulario
+        document.getElementById('searchInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+            }
+        });
+        
+        // Establecer fecha mínima al cargar
+        document.addEventListener('DOMContentLoaded', function() {
+            const hoy = new Date();
+            const fechaMinima = hoy.toISOString().split('T')[0];
+            document.getElementById('fecha_guardia').setAttribute('min', fechaMinima);
+        });
+        
+        // Manejo del modal de reemplazo de personal
+        document.getElementById('fecha_guardia').addEventListener('change', function() {
+            const fecha = this.value;
+            const lugarSelect = document.getElementById('lugar_guardia_reemplazo');
+            
+            if (fecha && lugarSelect.value) {
+                buscarGuardiaExistente(fecha, lugarSelect.value);
+            }
+        });
+        
+        document.getElementById('lugar_guardia_reemplazo').addEventListener('change', function() {
+            const lugar = this.value;
+            const fechaInput = document.getElementById('fecha_guardia');
+            
+            if (fechaInput.value && lugar) {
+                buscarGuardiaExistente(fechaInput.value, lugar);
+            }
+            
+            // Cargar policías disponibles para este lugar
+            if (lugar) {
+                cargarPolicias(lugar);
+            }
+        });
+        
+        function buscarGuardiaExistente(fecha, lugarId) {
+            fetch('api/buscar_guardia.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `fecha=${fecha}&lugar_id=${lugarId}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                const infoDiv = document.getElementById('guardiaActualInfo');
+                const textoDiv = document.getElementById('guardiaActualTexto');
+                
+                if (data.success && data.guardia) {
+                    textoDiv.innerHTML = `
+                        <strong>Policía actual:</strong> ${data.guardia.apellido}, ${data.guardia.nombre}<br>
+                        <strong>Legajo:</strong> ${data.guardia.legajo}<br>
+                        <strong>Grado:</strong> ${data.guardia.grado}
+                    `;
+                    infoDiv.style.display = 'block';
+                } else {
+                    infoDiv.style.display = 'none';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('guardiaActualInfo').style.display = 'none';
+            });
+        }
+        
+        function cargarPolicias(lugarId) {
+            fetch('api/buscar_policias.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `lugar_id=${lugarId}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('nuevo_policia');
+                select.innerHTML = '<option value="">Seleccione un policía</option>';
+                
+                if (data.success && data.policias) {
+                    data.policias.forEach(policia => {
+                        const option = document.createElement('option');
+                        option.value = policia.id;
+                        option.textContent = `${policia.apellido}, ${policia.nombre} (${policia.legajo}) - ${policia.grado}`;
+                        select.appendChild(option);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
         }
     </script>
 </body>
 </html>
 
-<!-- Botones de Acción -->
-<div class="mb-4 no-print">
-    <button type="button" class="btn btn-danger btn-lg" onclick="generarGuardia('generar_guardia_actual')">
-        <i class="fas fa-shield-alt"></i> Generar Guardia
-    </button>
-    
-    <button type="button" class="btn btn-success btn-lg" onclick="generarGuardia('generar_guardia_semanal')" style="margin-left: 10px;">
-        <i class="fas fa-calendar-week"></i> Generar Guardia Semanal
-    </button>
-    
-    <form method="POST" style="display: inline; margin-left: 10px;">
-        <input type="hidden" name="action" value="reorganizar">
-        <button type="submit" class="btn btn-info" onclick="return confirm('¿Está seguro de reorganizar la lista de guardias?')">
-            <i class="fas fa-sync-alt"></i> Resetear Guardias
-        </button>
-    </form>
-</div>
-
-<script>
-function generarGuardia(action) {
-    let mensaje = '';
-    if (action === 'generar_guardia_actual') {
-        mensaje = '¿Está seguro de generar la guardia actual? Esto seleccionará 1 policía de cada lugar de guardia y los moverá al final de su lista.';
-    } else if (action === 'generar_guardia_semanal') {
-        mensaje = '¿Está seguro de generar la guardia semanal? Esto seleccionará 7 policías de cada lugar de guardia (uno por día) y los moverá al final de su lista.';
-    }
-    
-    if (confirm(mensaje)) {
-        // Crear formulario temporal
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = 'generar_pdf.php';
-        form.target = '_blank'; // Abrir en nueva ventana
-        
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'action';
-        input.value = action;
-        
-        form.appendChild(input);
-        document.body.appendChild(form);
-        form.submit();
-        document.body.removeChild(form);
-        
-        // Mostrar mensaje de éxito
-        setTimeout(() => {
-            location.reload();
-        }, 1000);
-    }
-}
-</script>
+                    <!-- Modal para generar guardia semanal -->
+                    <div class="modal fade" id="modalGenerarGuardiaSemanal" tabindex="-1" aria-labelledby="modalGenerarGuardiaLabel" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="modalGenerarGuardiaLabel">
+                                        <i class="fas fa-calendar-week"></i> Generar Guardia Semanal
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <form method="POST" id="formGenerarGuardiaSemanal">
+                                    <div class="modal-body">
+                                        <input type="hidden" name="action" value="generar_guardia_semanal">
+                                        
+                                        <div class="mb-3">
+                                            <label for="fecha_inicio" class="form-label">Fecha de Inicio (Domingo)</label>
+                                            <input type="date" class="form-control" id="fecha_inicio" name="fecha_inicio" required>
+                                            <div class="form-text">Seleccione el domingo de la semana para la cual desea generar las guardias.</div>
+                                        </div>
+                                        
+                                        <div class="alert alert-info">
+                                            <h6><i class="fas fa-info-circle"></i> Información:</h6>
+                                            <ul class="mb-0">
+                                                <li><strong>Domingo a Jueves:</strong> Personal de región Central</li>
+                                                <li><strong>Viernes y Sábado:</strong> Personal de región Regional</li>
+                                                <li><strong>Central:</strong> Disponible cada 15 días</li>
+                                                <li><strong>Regional:</strong> Disponible cada 30 días</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                        <button type="submit" class="btn btn-success">Generar Guardia Semanal</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Modal para generar guardia semanal -->
+                    <div class="modal fade" id="modalGenerarSemanal" tabindex="-1" aria-labelledby="modalGenerarSemanalLabel" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="modalGenerarSemanalLabel">
+                                        <i class="fas fa-calendar-week"></i> Generar Guardia Semanal
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-info">
+                                        <h6><i class="fas fa-info-circle"></i> Información:</h6>
+                                        <ul class="mb-0">
+                                            <li><strong>Domingo a Jueves:</strong> Personal de región Central</li>
+                                            <li><strong>Viernes y Sábado:</strong> Personal de región Regional</li>
+                                            <li><strong>Rotación:</strong> Cada persona asignada pasa al final de su lista</li>
+                                            <li><strong>Restricciones:</strong> Central (15 días), Regional (30 días)</li>
+                                        </ul>
+                                    </div>
+                                    <p>¿Está seguro de generar la guardia semanal? Esto asignará 7 días de guardia para cada lugar y generará un PDF con la programación.</p>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                    <form method="POST" style="display: inline;">
+                                        <input type="hidden" name="action" value="generar_guardia_semanal">
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="fas fa-file-pdf"></i> Generar y Descargar PDF
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>

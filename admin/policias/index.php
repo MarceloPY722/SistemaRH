@@ -8,28 +8,30 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
-// Obtener grados y especialidades para los formularios
+// Obtener grados, especialidades, regiones y lugares de guardia para los formularios
 $grados = $conn->query("SELECT * FROM grados ORDER BY nivel_jerarquia ASC");
 $especialidades = $conn->query("SELECT * FROM especialidades ORDER BY nombre ASC");
+$regiones = $conn->query("SELECT * FROM regiones ORDER BY nombre ASC");
 $lugares_guardias = $conn->query("SELECT * FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
 
 // Procesar formulario de nuevo policía
 if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
+    $legajo = (int)trim($_POST['legajo']);
     $nombre = trim($_POST['nombre']);
     $apellido = trim($_POST['apellido']);
     $cin = trim($_POST['cin']);
+    $genero = $_POST['genero'];
     $grado_id = $_POST['grado_id'];
     $especialidad_id = $_POST['especialidad_id'] ?: null;
     $cargo = trim($_POST['cargo']);
     $comisionamiento = trim($_POST['comisionamiento']);
     $telefono = trim($_POST['telefono']);
-    $region = $_POST['region'];
+    $region_id = $_POST['region_id'];
     $lugar_guardia_id = $_POST['lugar_guardia_id'] ?: null;
-    $fecha_ingreso = $_POST['fecha_ingreso'];
     
-    $sql = "INSERT INTO policias (nombre, apellido, cin, grado_id, especialidad_id, cargo, comisionamiento, telefono, region, lugar_guardia_id, fecha_ingreso) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $sql = "INSERT INTO policias (legajo, nombre, apellido, cin, genero, grado_id, especialidad_id, cargo, comisionamiento, telefono, region_id, lugar_guardia_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sssiiisssii", $nombre, $apellido, $cin, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region, $lugar_guardia_id, $fecha_ingreso);
+    $stmt->bind_param("issssiisssii", $legajo, $nombre, $apellido, $cin, $genero, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region_id, $lugar_guardia_id);
     
     if ($stmt->execute()) {
         $mensaje = "<div class='alert alert-success'>Policía registrado exitosamente</div>";
@@ -39,15 +41,16 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
 }
 
 // Obtener lista de policías
+
 $policias = $conn->query("
-    SELECT p.*, g.nombre as grado_nombre, e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre
+    SELECT p.*, g.nombre as grado_nombre, e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre
     FROM policias p
     LEFT JOIN grados g ON p.grado_id = g.id
     LEFT JOIN especialidades e ON p.especialidad_id = e.id
     LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
+    LEFT JOIN regiones r ON p.region_id = r.id
     WHERE p.activo = 1
-    ORDER BY g.nivel_jerarquia ASC, p.apellido ASC
-");
+    ORDER BY g.nivel_jerarquia ASC, p.apellido ASC");
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -220,6 +223,7 @@ $policias = $conn->query("
                                 <table class="table table-striped" id="policiasTable">
                                     <thead>
                                         <tr>
+                                            <th>Legajo</th>
                                             <th>CIN</th>
                                             <th>Nombre Completo</th>
                                             <th>Grado</th>
@@ -232,7 +236,8 @@ $policias = $conn->query("
                                     </thead>
                                     <tbody id="policiasTableBody">
                                         <?php while ($policia = $policias->fetch_assoc()): ?>
-                                        <tr class="policia-row" data-search="<?php echo strtolower($policia['cin'] . ' ' . $policia['nombre'] . ' ' . $policia['apellido'] . ' ' . $policia['grado_nombre'] . ' ' . ($policia['especialidad_nombre'] ?: '') . ' ' . $policia['cargo'] . ' ' . $policia['telefono'] . ' ' . $policia['region']); ?>">
+                                        <tr class="policia-row" data-search="<?php echo strtolower($policia['legajo'] . ' ' . $policia['cin'] . ' ' . $policia['nombre'] . ' ' . $policia['apellido'] . ' ' . $policia['grado_nombre'] . ' ' . ($policia['especialidad_nombre'] ?: '') . ' ' . $policia['cargo'] . ' ' . $policia['telefono'] . ' ' . $policia['region_nombre']); ?>">
+                                            <td class="searchable"><?php echo $policia['legajo']; ?></td>
                                             <td class="searchable"><?php echo $policia['cin']; ?></td>
                                             <td class="searchable"><?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?></td>
                                             <td class="searchable"><?php echo $policia['grado_nombre']; ?></td>
@@ -240,8 +245,8 @@ $policias = $conn->query("
                                             <td class="searchable"><?php echo $policia['cargo']; ?></td>
                                             <td class="searchable"><?php echo $policia['telefono']; ?></td>
                                             <td>
-                                                <span class="badge bg-<?php echo $policia['region'] == 'CENTRAL' ? 'primary' : 'secondary'; ?>">
-                                                    <?php echo $policia['region']; ?>
+                                                <span class="badge bg-<?php echo (strtoupper($policia['region_nombre']) == 'CENTRAL') ? 'primary' : 'secondary'; ?>">
+                                                    <?php echo htmlspecialchars($policia['region_nombre']); ?>
                                                 </span>
                                             </td>
                                             <td>
@@ -297,6 +302,10 @@ $policias = $conn->query("
                                 <input type="text" class="form-control" name="apellido" required>
                             </div>
                             <div class="col-md-6 mb-3">
+                                <label class="form-label">Legajo *</label>
+                                <input type="number" class="form-control" name="legajo" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
                                 <label class="form-label">CIN *</label>
                                 <input type="text" class="form-control" name="cin" required>
                             </div>
@@ -338,12 +347,21 @@ $policias = $conn->query("
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Región *</label>
-                                <select class="form-select" name="region" required>
-                                    <option value="CENTRAL">Central</option>
-                                    <option value="REGIONAL">Regional</option>
+                                <select class="form-select" name="region_id" required>
+                                    <option value="">Seleccionar región...</option>
+                                    <?php 
+                                    if ($regiones->num_rows > 0) {
+                                        $regiones->data_seek(0);
+                                        while ($region = $regiones->fetch_assoc()): 
+                                    ?>
+                                    <option value="<?php echo $region['id']; ?>"><?php echo htmlspecialchars($region['nombre']); ?></option>
+                                    <?php 
+                                        endwhile; 
+                                    }
+                                    ?>
                                 </select>
                             </div>
-                            <div class="col-md-6 mb-3">
+                            <div class="col-md-4 mb-3">
                                 <label class="form-label">Lugar de Guardia</label>
                                 <select class="form-select" name="lugar_guardia_id">
                                     <option value="">Seleccionar lugar...</option>
@@ -355,9 +373,24 @@ $policias = $conn->query("
                                     <?php endwhile; ?>
                                 </select>
                             </div>
-                            <div class="col-md-6 mb-3">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Zona de Guardia</label>
+                                <input type="text" class="form-select" name="zona_guardia" placeholder="Especificar zona...">
+                            </div>
+                            <div class="col-md-4 mb-3">
                                 <label class="form-label">Fecha de Ingreso *</label>
-                                <input type="date" class="form-control" name="fecha_ingreso" required>
+                                // Eliminar el campo del modal (línea 366)
+                                // <input type="date" class="form-control" name="fecha_ingreso" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="observaciones" class="form-label">Observaciones</label>
+                                <textarea class="form-control" id="observaciones" name="observaciones" rows="2"></textarea>
+                            </div>
+                            
+                            <div class="d-flex justify-content-between">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Registrar Policía</button>
                             </div>
                         </div>
                     </div>

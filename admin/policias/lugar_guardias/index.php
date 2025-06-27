@@ -16,12 +16,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     switch ($accion) {
         case 'agregar_lugar':
             $nombre = trim($_POST['nombre_lugar'] ?? '');
-            $zona = trim($_POST['zona_lugar'] ?? '');
             $direccion = trim($_POST['direccion_lugar'] ?? '');
             $descripcion = trim($_POST['descripcion_lugar'] ?? '');
             $activo = isset($_POST['activo_lugar']) ? 1 : 0;
             
-            if (!empty($nombre) && !empty($zona)) {
+            if (!empty($nombre)) {
                 // Verificar si ya existe un lugar con el mismo nombre
                 $stmt_check = $conn->prepare("SELECT id FROM lugares_guardias WHERE nombre = ?");
                 if ($stmt_check) {
@@ -34,9 +33,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $tipo_mensaje = "warning";
                     } else {
                         // Insertar nuevo lugar
-                        $stmt = $conn->prepare("INSERT INTO lugares_guardias (nombre, zona, direccion, descripcion, activo) VALUES (?, ?, ?, ?, ?)");
+                        $stmt = $conn->prepare("INSERT INTO lugares_guardias (nombre, direccion, descripcion, activo) VALUES (?, ?, ?, ?)");
                         if ($stmt) {
-                            $stmt->bind_param("ssssi", $nombre, $zona, $direccion, $descripcion, $activo);
+                            $stmt->bind_param("sssi", $nombre, $direccion, $descripcion, $activo);
                             
                             if ($stmt->execute()) {
                                 $mensaje = "Lugar de guardia agregado exitosamente.";
@@ -57,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $tipo_mensaje = "danger";
                 }
             } else {
-                $mensaje = "El nombre y la zona son campos obligatorios.";
+                $mensaje = "El nombre es un campo obligatorio.";
                 $tipo_mensaje = "warning";
             }
             break;
@@ -173,13 +172,9 @@ if ($result_lugares) {
                                 <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>">
                                     <input type="hidden" name="accion" value="agregar_lugar">
                                     <div class="row">
-                                        <div class="col-md-6 mb-3">
+                                        <div class="col-md-12 mb-3">
                                             <label for="nombre_lugar" class="form-label">Nombre del Lugar *</label>
                                             <input type="text" class="form-control" id="nombre_lugar" name="nombre_lugar" required>
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label for="zona_lugar" class="form-label">Zona *</label>
-                                            <input type="text" class="form-control" id="zona_lugar" name="zona_lugar" required placeholder="Escribe la zona...">
                                         </div>
                                     </div>
                                     <div class="mb-3">
@@ -209,8 +204,6 @@ if ($result_lugares) {
                                             <tr>
                                                 <th>ID</th>
                                                 <th>Nombre</th>
-                                                <th>Zona</th>
-                                                <th>Dirección</th>
                                                 <th>Activo</th>
                                                 <th>Acciones</th>
                                             </tr>
@@ -221,8 +214,6 @@ if ($result_lugares) {
                                                 <tr>
                                                     <td><?php echo $lugar['id']; ?></td>
                                                     <td><?php echo htmlspecialchars($lugar['nombre']); ?></td>
-                                                    <td><?php echo htmlspecialchars($lugar['zona']); ?></td>
-                                                    <td><?php echo htmlspecialchars($lugar['direccion'] ?: 'N/A'); ?></td>
                                                     <td>
                                                         <span class="badge bg-<?php echo $lugar['activo'] ? 'success' : 'danger'; ?>">
                                                             <?php echo $lugar['activo'] ? 'Activo' : 'Inactivo'; ?>
@@ -237,7 +228,7 @@ if ($result_lugares) {
                                                 <?php endforeach; ?>
                                             <?php else: ?>
                                                 <tr>
-                                                    <td colspan="6" class="text-center">No hay lugares de guardia registrados.</td>
+                                                    <td colspan="4" class="text-center">No hay lugares de guardia registrados.</td>
                                                 </tr>
                                             <?php endif; ?>
                                         </tbody>

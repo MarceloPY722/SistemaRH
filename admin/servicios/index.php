@@ -8,7 +8,6 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
-// Obtener policías disponibles para jefe de servicio
 $policias_jefe = $conn->query("
     SELECT p.id, p.nombre, p.apellido, g.nombre as grado
     FROM policias p

@@ -75,6 +75,42 @@ if ($reporte_tipo) {
                 ORDER BY lg.posicion ASC
             ");
             break;
+            
+        case 'guardias_realizadas':
+            $stmt = $conn->prepare("
+                SELECT gr.fecha_guardia, 
+                       CONCAT(p.nombre, ' ', p.apellido) as policia,
+                       p.cin, g.nombre as grado,
+                       lg.nombre as lugar_guardia,
+                       gr.fecha_registro
+                FROM guardias_realizadas gr
+                JOIN policias p ON gr.policia_id = p.id
+                JOIN grados g ON p.grado_id = g.id
+                JOIN lugares_guardias lg ON gr.lugar_id = lg.id
+                WHERE gr.fecha_guardia BETWEEN ? AND ?
+                ORDER BY gr.fecha_guardia DESC, lg.nombre ASC
+            ");
+            $stmt->bind_param("ss", $fecha_inicio, $fecha_fin);
+            $stmt->execute();
+            $reportes_data = $stmt->get_result();
+            break;
+            
+        case 'ausentes_activos':
+            $reportes_data = $conn->query("
+                SELECT CONCAT(p.nombre, ' ', p.apellido) as policia,
+                       p.cin, g.nombre as grado, ta.nombre as tipo_ausencia,
+                       a.fecha_inicio, a.fecha_fin, a.descripcion,
+                       DATEDIFF(COALESCE(a.fecha_fin, CURDATE()), a.fecha_inicio) + 1 as dias_ausencia
+                FROM ausencias a
+                JOIN policias p ON a.policia_id = p.id
+                JOIN grados g ON p.grado_id = g.id
+                JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id
+                WHERE a.estado = 'APROBADA' 
+                AND (a.fecha_fin IS NULL OR a.fecha_fin >= CURDATE())
+                AND a.fecha_inicio <= CURDATE()
+                ORDER BY a.fecha_inicio DESC
+            ");
+            break;
     }
 }
 ?>
@@ -155,7 +191,7 @@ if ($reporte_tipo) {
                     <?php if (!$reporte_tipo): ?>
                     <!-- Selección de Reportes -->
                     <div class="row">
-                        <div class="col-md-6 mb-4">
+                        <div class="col-md-4 mb-4">
                             <div class="card report-card" onclick="location.href='?tipo=policias_activos'">
                                 <div class="card-body text-center">
                                     <i class="fas fa-users fa-3x text-primary mb-3"></i>
@@ -164,30 +200,48 @@ if ($reporte_tipo) {
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6 mb-4">
-                            <div class="card report-card" onclick="showDateModal('servicios_periodo')">
+                        <div class="col-md-4 mb-4">
+                            <div class="card report-card" onclick="location.href='?tipo=ausentes_activos'">
                                 <div class="card-body text-center">
-                                    <i class="fas fa-calendar-alt fa-3x text-success mb-3"></i>
-                                    <h5>Servicios por Período</h5>
-                                    <p class="text-muted">Servicios programados en un rango de fechas</p>
+                                    <i class="fas fa-user-times fa-3x text-danger mb-3"></i>
+                                    <h5>Ausentes Actuales</h5>
+                                    <p class="text-muted">Personal actualmente ausente del servicio</p>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6 mb-4">
-                            <div class="card report-card" onclick="showDateModal('ausencias_periodo')">
-                                <div class="card-body text-center">
-                                    <i class="fas fa-user-times fa-3x text-warning mb-3"></i>
-                                    <h5>Ausencias por Período</h5>
-                                    <p class="text-muted">Ausencias registradas en un rango de fechas</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-6 mb-4">
+                        <div class="col-md-4 mb-4">
                             <div class="card report-card" onclick="location.href='?tipo=guardias_rotacion'">
                                 <div class="card-body text-center">
                                     <i class="fas fa-list-ol fa-3x text-info mb-3"></i>
                                     <h5>Lista de Guardias</h5>
                                     <p class="text-muted">Orden actual de rotación de guardias</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="card report-card" onclick="showDateModal('guardias_realizadas')">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-shield-alt fa-3x text-success mb-3"></i>
+                                    <h5>Guardias Realizadas</h5>
+                                    <p class="text-muted">Historial de guardias por fecha</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="card report-card" onclick="showDateModal('servicios_periodo')">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-calendar-alt fa-3x text-warning mb-3"></i>
+                                    <h5>Servicios por Período</h5>
+                                    <p class="text-muted">Servicios programados en un rango de fechas</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="card report-card" onclick="showDateModal('ausencias_periodo')">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-calendar-times fa-3x text-secondary mb-3"></i>
+                                    <h5>Ausencias por Período</h5>
+                                    <p class="text-muted">Ausencias registradas en un rango de fechas</p>
                                 </div>
                             </div>
                         </div>
@@ -202,7 +256,9 @@ if ($reporte_tipo) {
                                     'policias_activos' => 'Reporte de Policías Activos',
                                     'servicios_periodo' => 'Reporte de Servicios por Período',
                                     'ausencias_periodo' => 'Reporte de Ausencias por Período',
-                                    'guardias_rotacion' => 'Reporte de Lista de Guardias'
+                                    'guardias_rotacion' => 'Reporte de Lista de Guardias',
+                                    'guardias_realizadas' => 'Reporte de Guardias Realizadas',
+                                    'ausentes_activos' => 'Reporte de Ausentes Actuales'
                                 ];
                                 echo $titulos[$reporte_tipo] ?? 'Reporte';
                                 ?>
@@ -236,6 +292,12 @@ if ($reporte_tipo) {
                                                     break;
                                                 case 'guardias_rotacion':
                                                     echo '<th>Posición</th><th>Policía</th><th>CIN</th><th>Grado</th><th>Última Guardia</th><th>Lugar</th>';
+                                                    break;
+                                                case 'guardias_realizadas':
+                                                    echo '<th>Fecha Guardia</th><th>Policía</th><th>CIN</th><th>Grado</th><th>Lugar</th><th>Fecha Registro</th>';
+                                                    break;
+                                                case 'ausentes_activos':
+                                                    echo '<th>Policía</th><th>CIN</th><th>Grado</th><th>Tipo Ausencia</th><th>Fecha Inicio</th><th>Fecha Fin</th><th>Días</th><th>Descripción</th>';
                                                     break;
                                             }
                                             ?>
@@ -280,6 +342,24 @@ if ($reporte_tipo) {
                                                     echo '<td>' . htmlspecialchars($row['grado']) . '</td>';
                                                     echo '<td>' . ($row['ultima_guardia_fecha'] ? date('d/m/Y', strtotime($row['ultima_guardia_fecha'])) : 'Nunca') . '</td>';
                                                     echo '<td>' . htmlspecialchars($row['lugar_guardia'] ?? 'No asignado') . '</td>';
+                                                    break;
+                                                case 'guardias_realizadas':
+                                                    echo '<td>' . date('d/m/Y', strtotime($row['fecha_guardia'])) . '</td>';
+                                                    echo '<td>' . htmlspecialchars($row['policia']) . '</td>';
+                                                    echo '<td>' . htmlspecialchars($row['cin']) . '</td>';
+                                                    echo '<td>' . htmlspecialchars($row['grado']) . '</td>';
+                                                    echo '<td>' . htmlspecialchars($row['lugar_guardia']) . '</td>';
+                                                    echo '<td>' . date('d/m/Y H:i', strtotime($row['fecha_registro'])) . '</td>';
+                                                    break;
+                                                case 'ausentes_activos':
+                                                    echo '<td>' . htmlspecialchars($row['policia']) . '</td>';
+                                                    echo '<td>' . htmlspecialchars($row['cin']) . '</td>';
+                                                    echo '<td>' . htmlspecialchars($row['grado']) . '</td>';
+                                                    echo '<td>' . htmlspecialchars($row['tipo_ausencia']) . '</td>';
+                                                    echo '<td>' . date('d/m/Y', strtotime($row['fecha_inicio'])) . '</td>';
+                                                    echo '<td>' . ($row['fecha_fin'] ? date('d/m/Y', strtotime($row['fecha_fin'])) : 'Indefinida') . '</td>';
+                                                    echo '<td><span class="badge bg-info">' . $row['dias_ausencia'] . '</span></td>';
+                                                    echo '<td>' . htmlspecialchars($row['descripcion']) . '</td>';
                                                     break;
                                             }
                                             ?>
