@@ -12,6 +12,8 @@ require_once '../../cnx/db_connect.php';
 $reporte_tipo = $_GET['tipo'] ?? '';
 $fecha_inicio = $_GET['fecha_inicio'] ?? date('Y-m-01');
 $fecha_fin = $_GET['fecha_fin'] ?? date('Y-m-t');
+$fecha_especifica = $_GET['fecha_especifica'] ?? '';
+$dia_semana = $_GET['dia_semana'] ?? '';
 
 $reportes_data = [];
 
@@ -77,22 +79,70 @@ if ($reporte_tipo) {
             break;
             
         case 'guardias_realizadas':
-            $stmt = $conn->prepare("
-                SELECT gr.fecha_guardia, 
-                       CONCAT(p.nombre, ' ', p.apellido) as policia,
-                       p.cin, g.nombre as grado,
-                       lg.nombre as lugar_guardia,
-                       gr.fecha_registro
-                FROM guardias_realizadas gr
-                JOIN policias p ON gr.policia_id = p.id
-                JOIN grados g ON p.grado_id = g.id
-                JOIN lugares_guardias lg ON gr.lugar_id = lg.id
-                WHERE gr.fecha_guardia BETWEEN ? AND ?
-                ORDER BY gr.fecha_guardia DESC, lg.nombre ASC
-            ");
-            $stmt->bind_param("ss", $fecha_inicio, $fecha_fin);
+            // Determinar si usar fecha específica o rango
+            if ($fecha_especifica) {
+                $stmt = $conn->prepare("
+                    SELECT gr.fecha_inicio as fecha_guardia, 
+                           CONCAT(p.nombre, ' ', p.apellido) as policia,
+                           p.cin, g.nombre as grado,
+                           lg.nombre as lugar_guardia,
+                           lg.id as lugar_guardia_id,
+                           gr.created_at as fecha_registro
+                    FROM guardias_realizadas gr
+                    JOIN policias p ON gr.policia_id = p.id
+                    JOIN grados g ON p.grado_id = g.id
+                    JOIN lugares_guardias lg ON gr.lugar_guardia_id = lg.id
+                    WHERE DATE(gr.fecha_inicio) = ?
+                    ORDER BY lg.nombre ASC, gr.fecha_inicio DESC
+                ");
+                $stmt->bind_param("s", $fecha_especifica);
+            } else {
+                $stmt = $conn->prepare("
+                    SELECT gr.fecha_inicio as fecha_guardia, 
+                           CONCAT(p.nombre, ' ', p.apellido) as policia,
+                           p.cin, g.nombre as grado,
+                           lg.nombre as lugar_guardia,
+                           lg.id as lugar_guardia_id,
+                           gr.created_at as fecha_registro
+                    FROM guardias_realizadas gr
+                    JOIN policias p ON gr.policia_id = p.id
+                    JOIN grados g ON p.grado_id = g.id
+                    JOIN lugares_guardias lg ON gr.lugar_guardia_id = lg.id
+                    WHERE gr.fecha_inicio BETWEEN ? AND ?
+                    ORDER BY lg.nombre ASC, gr.fecha_inicio DESC
+                ");
+                $stmt->bind_param("ss", $fecha_inicio, $fecha_fin);
+            }
             $stmt->execute();
             $reportes_data = $stmt->get_result();
+            break;
+            
+        case 'guardias_por_dia':
+            if ($dia_semana) {
+                $stmt = $conn->prepare("
+                    SELECT 
+                        gr.fecha_inicio,
+                        gr.fecha_fin,
+                        p.nombre,
+                        p.apellido,
+                        p.telefono,
+                        g.abreviatura as grado_abreviatura,
+                        g.nombre as grado,
+                        r.nombre as region,
+                        lg.nombre as lugar_guardia,
+                        DAYOFWEEK(gr.fecha_inicio) as dia_semana_num
+                    FROM guardias_realizadas gr
+                    JOIN policias p ON gr.policia_id = p.id
+                    LEFT JOIN grados g ON p.grado_id = g.id
+                    LEFT JOIN regiones r ON p.region_id = r.id
+                    LEFT JOIN lugares_guardias lg ON gr.lugar_guardia_id = lg.id
+                    WHERE DAYOFWEEK(gr.fecha_inicio) = ?
+                    ORDER BY gr.fecha_inicio DESC, lg.nombre, p.apellido, p.nombre
+                ");
+                $stmt->bind_param('i', $dia_semana);
+                $stmt->execute();
+                $reportes_data = $stmt->get_result();
+            }
             break;
             
         case 'ausentes_activos':
@@ -113,6 +163,25 @@ if ($reporte_tipo) {
             break;
     }
 }
+
+// Verificar si hay guardias realizadas para el reporte por día
+$tiene_guardias = false;
+if ($reporte_tipo == 'guardias_por_dia') {
+    $sql_verificar = "SELECT COUNT(*) as total FROM guardias_realizadas";
+    $result_verificar = $conn->query($sql_verificar);
+    $row = $result_verificar->fetch_assoc();
+    $tiene_guardias = $row ? $row['total'] > 0 : false;
+}
+
+$dias_semana = [
+    1 => 'Domingo',
+    2 => 'Lunes', 
+    3 => 'Martes',
+    4 => 'Miércoles',
+    5 => 'Jueves',
+    6 => 'Viernes',
+    7 => 'Sábado'
+];
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -219,11 +288,20 @@ if ($reporte_tipo) {
                             </div>
                         </div>
                         <div class="col-md-4 mb-4">
-                            <div class="card report-card" onclick="showDateModal('guardias_realizadas')">
+                            <div class="card report-card" onclick="location.href='guardias_realizadas.php'">
                                 <div class="card-body text-center">
                                     <i class="fas fa-shield-alt fa-3x text-success mb-3"></i>
                                     <h5>Guardias Realizadas</h5>
-                                    <p class="text-muted">Historial de guardias por fecha</p>
+                                    <p class="text-muted">Historial detallado de guardias por fecha y lugar</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="card report-card" onclick="showDayModal('guardias_por_dia')">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-calendar-day fa-3x text-purple mb-3"></i>
+                                    <h5>Guardias por Día</h5>
+                                    <p class="text-muted">Consultar guardias por día de la semana</p>
                                 </div>
                             </div>
                         </div>
@@ -258,6 +336,7 @@ if ($reporte_tipo) {
                                     'ausencias_periodo' => 'Reporte de Ausencias por Período',
                                     'guardias_rotacion' => 'Reporte de Lista de Guardias',
                                     'guardias_realizadas' => 'Reporte de Guardias Realizadas',
+                                    'guardias_por_dia' => 'Reporte de Guardias por Día de la Semana',
                                     'ausentes_activos' => 'Reporte de Ausentes Actuales'
                                 ];
                                 echo $titulos[$reporte_tipo] ?? 'Reporte';
@@ -273,7 +352,61 @@ if ($reporte_tipo) {
                             </div>
                         </div>
                         <div class="card-body">
-                            <?php if ($reportes_data && $reportes_data->num_rows > 0): ?>
+                            <?php if ($reporte_tipo == 'guardias_por_dia'): ?>
+                                <?php if (!$tiene_guardias): ?>
+                                    <div class="alert alert-warning">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        No hay guardias generadas en el sistema. Primero debes generar guardias semanales.
+                                    </div>
+                                <?php elseif (!$dia_semana): ?>
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle"></i>
+                                        Selecciona un día de la semana para consultar las guardias.
+                                    </div>
+                                <?php elseif ($reportes_data && $reportes_data->num_rows > 0): ?>
+                                    <div class="alert alert-info">
+                                        <strong>Mostrando guardias para: <?= $dias_semana[$dia_semana] ?></strong>
+                                        <br>Total de guardias encontradas: <?= $reportes_data->num_rows ?>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-striped">
+                                            <thead>
+                                                <tr>
+                                                    <th>Fecha</th>
+                                                    <th>Personal</th>
+                                                    <th>Teléfono</th>
+                                                    <th>Región</th>
+                                                    <th>Lugar de Guardia</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php while ($row = $reportes_data->fetch_assoc()): ?>
+                                                <tr>
+                                                    <td><?= date('d/m/Y', strtotime($row['fecha_inicio'])) ?></td>
+                                                    <td>
+                                                        <?php 
+                                                        $nombre_completo = '';
+                                                        if (!empty($row['grado_abreviatura'])) {
+                                                            $nombre_completo = $row['grado_abreviatura'] . ' ';
+                                                        }
+                                                        $nombre_completo .= $row['apellido'] . ', ' . $row['nombre'];
+                                                        echo htmlspecialchars($nombre_completo);
+                                                        ?>
+                                                    </td>
+                                                    <td><?= $row['telefono'] ?: 'No registrado' ?></td>
+                                                    <td><?= htmlspecialchars($row['region']) ?></td>
+                                                    <td><?= htmlspecialchars($row['lugar_guardia']) ?></td>
+                                                </tr>
+                                                <?php endwhile; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                <?php else: ?>
+                                    <div class="alert alert-warning">
+                                        No se encontraron guardias para el día <?= $dias_semana[$dia_semana] ?>.
+                                    </div>
+                                <?php endif; ?>
+                            <?php elseif ($reportes_data && $reportes_data->num_rows > 0): ?>
                             <div class="table-responsive">
                                 <table class="table table-striped">
                                     <thead>
@@ -411,6 +544,37 @@ if ($reporte_tipo) {
         </div>
     </div>
 
+    <!-- Modal para selección de día de la semana -->
+    <div class="modal fade" id="dayModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Seleccionar Día de la Semana</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="dayForm">
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-12">
+                                <label class="form-label">Día de la Semana</label>
+                                <select name="dia_semana" class="form-select" required>
+                                    <option value="">-- Seleccionar día --</option>
+                                    <?php foreach ($dias_semana as $num => $nombre): ?>
+                                        <option value="<?= $num ?>"><?= $nombre ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Consultar Guardias</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let currentReportType = '';
@@ -420,6 +584,11 @@ if ($reporte_tipo) {
             new bootstrap.Modal(document.getElementById('dateModal')).show();
         }
         
+        function showDayModal(tipo) {
+            currentReportType = tipo;
+            new bootstrap.Modal(document.getElementById('dayModal')).show();
+        }
+        
         document.getElementById('dateForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const formData = new FormData(this);
@@ -427,6 +596,14 @@ if ($reporte_tipo) {
             const fechaFin = formData.get('fecha_fin');
             
             window.location.href = `?tipo=${currentReportType}&fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`;
+        });
+        
+        document.getElementById('dayForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            const diaSemana = formData.get('dia_semana');
+            
+            window.location.href = `?tipo=${currentReportType}&dia_semana=${diaSemana}`;
         });
     </script>
 </body>

@@ -124,6 +124,7 @@ if (isset($_SESSION['usuario_id'])) {
                         <span class="nav-text">Configuración</span>
                         <i class="fas fa-chevron-right submenu-arrow"></i>
                     </a>
+
                     
                     <ul class="submenu">
                         <li>

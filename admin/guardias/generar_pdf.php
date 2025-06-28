@@ -32,9 +32,8 @@ function generarPDFGuardiaSemanal($guardias) {
         $pdf->SetFont('Arial', 'B', 10);
         $pdf->Cell(25, 8, 'Fecha', 1, 0, 'C');
         $pdf->Cell(20, 8, 'Dia', 1, 0, 'C');
-        $pdf->Cell(60, 8, 'Apellido y Nombre', 1, 0, 'C');
-        $pdf->Cell(20, 8, 'Legajo', 1, 0, 'C');
-        $pdf->Cell(35, 8, 'Grado', 1, 0, 'C');
+        $pdf->Cell(75, 8, 'Apellido y Nombre', 1, 0, 'C');
+        $pdf->Cell(30, 8, 'Telefono', 1, 0, 'C');
         $pdf->Cell(20, 8, 'Region', 1, 1, 'C');
         
         // Datos de guardias
@@ -49,11 +48,20 @@ function generarPDFGuardiaSemanal($guardias) {
                 $pdf->SetFillColor(248, 249, 250);
             }
             
+            $telefono = isset($guardia['policia']['telefono']) && !empty($guardia['policia']['telefono']) ? $guardia['policia']['telefono'] : 'No registrado';
+            
+            // Formatear nombre con abreviatura del grado
+            $nombre_completo = '';
+            if (isset($guardia['policia']['grado_abreviatura']) && !empty($guardia['policia']['grado_abreviatura'])) {
+                $nombre_completo = $guardia['policia']['grado_abreviatura'] . ' ' . $guardia['policia']['apellido'] . ', ' . $guardia['policia']['nombre'];
+            } else {
+                $nombre_completo = $guardia['policia']['apellido'] . ', ' . $guardia['policia']['nombre'];
+            }
+            
             $pdf->Cell(25, 6, date('d/m/Y', strtotime($guardia['fecha'])), 1, 0, 'C', $fill);
             $pdf->Cell(20, 6, $dia_texto, 1, 0, 'C', $fill);
-            $pdf->Cell(60, 6, utf8_decode($guardia['policia']['apellido'] . ', ' . $guardia['policia']['nombre']), 1, 0, 'L', $fill);
-            $pdf->Cell(20, 6, $guardia['policia']['legajo'], 1, 0, 'C', $fill);
-            $pdf->Cell(35, 6, utf8_decode($guardia['policia']['grado']), 1, 0, 'L', $fill);
+            $pdf->Cell(75, 6, utf8_decode($nombre_completo), 1, 0, 'L', $fill);
+            $pdf->Cell(30, 6, $telefono, 1, 0, 'C', $fill);
             $pdf->Cell(20, 6, $guardia['policia']['region'], 1, 1, 'C', $fill);
         }
         
@@ -133,8 +141,8 @@ function generarPDFGuardia($guardiaData, $tipo = 'actual') {
     // Generar nombre de archivo
     $filename = 'guardia_' . $tipo . '_' . date('Y-m-d_H-i-s') . '.pdf';
     
-    // Descargar PDF
+    // Descargar PDF - REMOVER exit() para permitir redirección
     $pdf->Output('D', $filename);
-    exit();
+    // exit(); <- COMENTAR O ELIMINAR ESTA LÍNEA
 }
 ?>

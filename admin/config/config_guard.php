@@ -13,18 +13,34 @@ $mensaje = '';
 // Procesar eliminación de guardias
 if ($_POST && isset($_POST['action'])) {
     if ($_POST['action'] == 'eliminar_todas') {
-        $sql = "DELETE FROM guardias_semanales_generadas";
-        if ($conn->query($sql)) {
-            $mensaje = "<div class='alert alert-success'>Todas las guardias semanales generadas han sido eliminadas exitosamente.</div>";
+        // Eliminar guardias semanales
+        $sql1 = "DELETE FROM guardias_semanales";
+        // Eliminar guardias realizadas
+        $sql2 = "DELETE FROM guardias_realizadas";
+        
+        $success1 = $conn->query($sql1);
+        $success2 = $conn->query($sql2);
+        
+        if ($success1 && $success2) {
+            $mensaje = "<div class='alert alert-success'>Todas las guardias semanales y realizadas han sido eliminadas exitosamente.</div>";
         } else {
             $mensaje = "<div class='alert alert-danger'>Error al eliminar las guardias: " . $conn->error . "</div>";
+        }
+    } elseif ($_POST['action'] == 'eliminar_guardias_realizadas') {
+        // Nueva opción: eliminar solo guardias realizadas
+        $sql = "DELETE FROM guardias_realizadas";
+        if ($conn->query($sql)) {
+            $affected_rows = $conn->affected_rows;
+            $mensaje = "<div class='alert alert-success'>Se eliminaron $affected_rows guardias realizadas exitosamente.</div>";
+        } else {
+            $mensaje = "<div class='alert alert-danger'>Error al eliminar las guardias realizadas: " . $conn->error . "</div>";
         }
     } elseif ($_POST['action'] == 'eliminar_por_fecha') {
         $fecha_inicio = $_POST['fecha_inicio'];
         $fecha_fin = $_POST['fecha_fin'];
         
-        $sql = "DELETE FROM guardias_semanales_generadas 
-                WHERE fecha_inicio_semana BETWEEN ? AND ?";
+        $sql = "DELETE FROM guardias_semanales 
+                WHERE fecha_inicio BETWEEN ? AND ?";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("ss", $fecha_inicio, $fecha_fin);
         
@@ -37,7 +53,7 @@ if ($_POST && isset($_POST['action'])) {
     } elseif ($_POST['action'] == 'eliminar_por_id') {
         $guardia_id = $_POST['guardia_id'];
         
-        $sql = "DELETE FROM guardias_semanales_generadas WHERE id = ?";
+        $sql = "DELETE FROM guardias_semanales WHERE id = ?";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("i", $guardia_id);
         
@@ -60,10 +76,9 @@ if ($_POST && isset($_POST['action'])) {
     }
 }
 
-$guardias_sql = "SELECT id, fecha_inicio_semana, fecha_fin_semana, tipo_guardia, 
-                        fecha_generacion, usuario_id 
-                 FROM guardias_semanales_generadas 
-                 ORDER BY fecha_inicio_semana DESC";
+$guardias_sql = "SELECT id, fecha_inicio, fecha_fin, usuario_id, created_at 
+                 FROM guardias_semanales 
+                 ORDER BY fecha_inicio DESC";
 $guardias_result = $conn->query($guardias_sql);
 
 $fecha_actual = date('Y-m-d');
@@ -130,6 +145,23 @@ $fecha_actual = date('Y-m-d');
                                 <div class="col-md-3">
                                     <div class="card border-warning">
                                         <div class="card-header bg-warning text-dark">
+                                            <h5><i class="fas fa-broom"></i> Limpiar Guardias Realizadas</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <p>Elimina todas las guardias realizadas.</p>
+                                            <form method="POST" onsubmit="return confirm('¿Está seguro de eliminar TODAS las guardias realizadas? Esta acción no se puede deshacer.')">
+                                                <input type="hidden" name="action" value="eliminar_guardias_realizadas">
+                                                <button type="submit" class="btn btn-warning">
+                                                    <i class="fas fa-broom"></i> Limpiar Guardias Realizadas
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-3">
+                                    <div class="card border-warning">
+                                        <div class="card-header bg-warning text-dark">
                                             <h5><i class="fas fa-calendar-alt"></i> Eliminar por Fechas</h5>
                                         </div>
                                         <div class="card-body">
@@ -151,22 +183,7 @@ $fecha_actual = date('Y-m-d');
                                     </div>
                                 </div>
                                 
-                                <!-- Información -->
-                                <div class="col-md-3">
-                                    <div class="card border-info">
-                                        <div class="card-header bg-info text-white">
-                                            <h5><i class="fas fa-info-circle"></i> Información</h5>
-                                        </div>
-                                        <div class="card-body">
-                                            <p><strong>Resetear:</strong> Reorganiza las posiciones de la lista de guardias.</p>
-                                            <p><strong>Eliminar:</strong> Borra registros de control para permitir regenerar.</p>
-                                            <a href="../guardias/index.php" class="btn btn-info">
-                                                <i class="fas fa-arrow-left"></i> Volver a Guardias
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                        
                             
                             <!-- Lista de guardias generadas -->
                             <div class="card">
@@ -189,30 +206,28 @@ $fecha_actual = date('Y-m-d');
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    <?php while ($guardia = $guardias_result->fetch_assoc()): ?>
-                                                        <tr>
-                                                            <td><?php echo $guardia['id']; ?></td>
-                                                            <td><?php echo date('d/m/Y', strtotime($guardia['fecha_inicio_semana'])); ?></td>
-                                                            <td><?php echo date('d/m/Y', strtotime($guardia['fecha_fin_semana'])); ?></td>
-                                                            <td>
-                                                                <span class="badge <?php echo $guardia['tipo_guardia'] == 'SEMANAL' ? 'bg-primary' : 'bg-secondary'; ?>">
-                                                                    <?php echo $guardia['tipo_guardia']; ?>
-                                                                </span>
-                                                            </td>
-                                                            <td><?php echo date('d/m/Y H:i', strtotime($guardia['fecha_generacion'])); ?></td>
-                                                            <td><?php echo $guardia['usuario_id']; ?></td>
-                                                            <td>
-                                                                <form method="POST" style="display: inline;" 
-                                                                      onsubmit="return confirm('¿Está seguro de eliminar esta guardia?')">
-                                                                    <input type="hidden" name="action" value="eliminar_por_id">
-                                                                    <input type="hidden" name="guardia_id" value="<?php echo $guardia['id']; ?>">
-                                                                    <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                                        <i class="fas fa-trash"></i>
-                                                                    </button>
-                                                                </form>
-                                                            </td>
-                                                        </tr>
-                                                    <?php endwhile; ?>
+                                                    <tbody>
+                                                        <?php while ($guardia = $guardias_result->fetch_assoc()): ?>
+                                                            <tr>
+                                                                <td><?php echo $guardia['id']; ?></td>
+                                                                <td><?php echo date('d/m/Y', strtotime($guardia['fecha_inicio'])); ?></td>
+                                                                <td><?php echo date('d/m/Y', strtotime($guardia['fecha_fin'])); ?></td>
+                                                                <td><span class="badge bg-primary">SEMANAL</span></td>
+                                                                <td><?php echo date('d/m/Y H:i', strtotime($guardia['created_at'])); ?></td>
+                                                                <td><?php echo $guardia['usuario_id']; ?></td>
+                                                                <td>
+                                                                    <form method="POST" style="display: inline;" 
+                                                                          onsubmit="return confirm('¿Está seguro de eliminar esta guardia?')">
+                                                                        <input type="hidden" name="action" value="eliminar_por_id">
+                                                                        <input type="hidden" name="guardia_id" value="<?php echo $guardia['id']; ?>">
+                                                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                                            <i class="fas fa-trash"></i>
+                                                                        </button>
+                                                                    </form>
+                                                                </td>
+                                                            </tr>
+                                                        <?php endwhile; ?>
+                                                    </tbody>
                                                 </tbody>
                                             </table>
                                         </div>
