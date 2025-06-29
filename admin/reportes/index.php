@@ -21,13 +21,30 @@ if ($reporte_tipo) {
     switch ($reporte_tipo) {
         case 'policias_activos':
             $reportes_data = $conn->query("
-                SELECT p.nombre, p.apellido, p.cin, g.nombre as grado, 
-                       p.comisionamiento, p.region, lg.nombre as lugar_guardia
+                SELECT p.legajo, p.nombre, p.apellido, p.cin, g.nombre as grado, 
+                       p.comisionamiento, r.nombre as region, lg.nombre as lugar_guardia,
+                       p.telefono, p.created_at as fecha_registro
                 FROM policias p
                 JOIN grados g ON p.grado_id = g.id
+                LEFT JOIN regiones r ON p.region_id = r.id
                 LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
                 WHERE p.activo = 1
                 ORDER BY g.nivel_jerarquia ASC, p.apellido ASC
+            ");
+            break;
+            
+        case 'policias_deshabilitados':
+            $reportes_data = $conn->query("
+                SELECT p.legajo, p.nombre, p.apellido, p.cin, 
+                       g.nombre as grado, p.comisionamiento, 
+                       r.nombre as region, lg.nombre as lugar_guardia, 
+                       p.telefono, p.updated_at as fecha_deshabilitacion
+                FROM policias p
+                LEFT JOIN grados g ON p.grado_id = g.id
+                LEFT JOIN regiones r ON p.region_id = r.id
+                LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
+                WHERE p.activo = 0
+                ORDER BY p.updated_at DESC
             ");
             break;
             
@@ -269,6 +286,17 @@ $dias_semana = [
                                 </div>
                             </div>
                         </div>
+                        <!-- Eliminar la tarjeta de policías activos de las líneas 280-286 -->
+                        <!-- Mantener solo la tarjeta de policías deshabilitados -->
+                        <div class="col-md-4 mb-4">
+                            <div class="card report-card" onclick="location.href='?tipo=policias_deshabilitados'">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-user-slash fa-3x text-muted mb-3"></i>
+                                    <h5>Policías Deshabilitados</h5>
+                                    <p class="text-muted">Personal que ha sido deshabilitado del sistema</p>
+                                </div>
+                            </div>
+                        </div>
                         <div class="col-md-4 mb-4">
                             <div class="card report-card" onclick="location.href='?tipo=ausentes_activos'">
                                 <div class="card-body text-center">
@@ -331,7 +359,8 @@ $dias_semana = [
                             <h5 class="mb-0">
                                 <?php 
                                 $titulos = [
-                                    'policias_activos' => 'Reporte de Policías Activos',
+                                    // Eliminar 'policias_activos' => 'Reporte de Policías Activos',
+                                    'policias_deshabilitados' => 'Reporte de Policías Deshabilitados',
                                     'servicios_periodo' => 'Reporte de Servicios por Período',
                                     'ausencias_periodo' => 'Reporte de Ausencias por Período',
                                     'guardias_rotacion' => 'Reporte de Lista de Guardias',
@@ -412,10 +441,21 @@ $dias_semana = [
                                     <thead>
                                         <tr>
                                             <?php 
+                                            // Corregir la sección de encabezados (líneas 441-475)
                                             // Generar encabezados según el tipo de reporte
                                             switch ($reporte_tipo) {
-                                                case 'policias_activos':
-                                                    echo '<th>Nombre</th><th>Apellido</th><th>CIN</th><th>Grado</th><th>Comisionamiento</th><th>Región</th><th>Lugar de Guardia</th>';
+                                                // Eliminar case 'policias_activos'
+                                                case 'policias_deshabilitados':
+                                                    echo '<th>Legajo</th>';
+                                                    echo '<th>Nombre</th>';
+                                                    echo '<th>Apellido</th>';
+                                                    echo '<th>CIN</th>';
+                                                    echo '<th>Grado</th>';
+                                                    echo '<th>Comisionamiento</th>';
+                                                    echo '<th>Región</th>';
+                                                    echo '<th>Lugar Guardia</th>';
+                                                    echo '<th>Teléfono</th>';
+                                                    echo '<th>Fecha Deshabilitación</th>';
                                                     break;
                                                 case 'servicios_periodo':
                                                     echo '<th>Servicio</th><th>Fecha</th><th>Descripción</th><th>Jefe de Servicio</th><th>Grado</th>';

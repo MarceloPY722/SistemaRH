@@ -8,7 +8,22 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
-// Obtener grados, especialidades, regiones y lugares de guardia para los selectores del formulario
+function obtenerSiguienteLegajo($conn) {
+    $query = "SELECT MAX(legajo) as max_legajo FROM policias"; // Removido WHERE activo = 1
+    $result = $conn->query($query);
+    
+    if ($result && $row = $result->fetch_assoc()) {
+        $max_legajo = $row['max_legajo'];
+        if ($max_legajo === null) {
+            return 1;
+        }
+        return $max_legajo + 1;
+    }
+    
+    return 1;
+}
+
+$siguiente_legajo = obtenerSiguienteLegajo($conn);
 $grados = $conn->query("SELECT * FROM grados ORDER BY nivel_jerarquia ASC");
 $especialidades = $conn->query("SELECT * FROM especialidades ORDER BY nombre ASC");
 $regiones = $conn->query("SELECT * FROM regiones ORDER BY nombre ASC");
@@ -16,9 +31,8 @@ $lugares_guardias = $conn->query("SELECT * FROM lugares_guardias WHERE activo = 
 
 $mensaje = "";
 
-// Procesar formulario de nuevo policía
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'crear') {
-    $legajo = (int)trim($_POST['legajo']);
+    $legajo = obtenerSiguienteLegajo($conn);
     $nombre = trim($_POST['nombre']);
     $apellido = trim($_POST['apellido']);
     $cin = trim($_POST['cin']);
@@ -28,18 +42,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     $cargo = trim($_POST['cargo']);
     $comisionamiento = trim($_POST['comisionamiento']);
     $telefono = trim($_POST['telefono']);
-    $region_id = !empty($_POST['region_id']) ? $_POST['region_id'] : 1; // Default to first region (usually CENTRAL)
+    $region_id = !empty($_POST['region_id']) ? $_POST['region_id'] : 1;
     $lugar_guardia_id = !empty($_POST['lugar_guardia_id']) ? $_POST['lugar_guardia_id'] : null;
     $observaciones = trim($_POST['observaciones']);
 
-
-
-    // Validar legajo único
-    $check_legajo = $conn->prepare("SELECT id FROM policias WHERE legajo = ? AND activo = 1");
-    $check_legajo->bind_param("i", $legajo);
-    $check_legajo->execute();
-    $result_legajo = $check_legajo->get_result();
-    
     // Validar CIN único
     $check_cin = $conn->prepare("SELECT id FROM policias WHERE cin = ? AND activo = 1");
     $check_cin->bind_param("s", $cin);
@@ -49,8 +55,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     // Validar campos obligatorios
     if (empty($genero)) {
         $mensaje = "<div class='alert alert-danger'>El campo género es obligatorio</div>";
-    } elseif ($result_legajo->num_rows > 0) {
-        $mensaje = "<div class='alert alert-danger'>El legajo ya está registrado por otro policía</div>";
     } elseif ($result_cin->num_rows > 0) {
         $mensaje = "<div class='alert alert-danger'>El CIN ya está registrado por otro policía</div>";
     } else {
@@ -59,15 +63,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         $stmt->bind_param("issssiisssiss", $legajo, $nombre, $apellido, $cin, $genero, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region_id, $lugar_guardia_id, $observaciones);
 
         if ($stmt->execute()) {
-            $mensaje = "<div class='alert alert-success'>Policía registrado exitosamente.</div>";
+            $mensaje = "<div class='alert alert-success'>Policía registrado exitosamente con legajo: $legajo</div>";
             $_POST = array(); 
+            // Actualizar el siguiente legajo para el próximo registro
+            $siguiente_legajo = obtenerSiguienteLegajo($conn);
         } else {
             $mensaje = "<div class='alert alert-danger'>Error al registrar policía: " . $conn->error . "</div>";
         }
         $stmt->close();
     }
     
-    $check_legajo->close();
     $check_cin->close();
 }
 // $conn->close(); // <-- REMOVE THIS LINE
@@ -135,9 +140,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                                 
                                 <div class="row">
                                     <div class="col-md-3 mb-3">
-                                        <label for="legajo" class="form-label required-field">Legajo</label>
-                                        <input type="number" class="form-control" id="legajo" name="legajo" value="<?php echo isset($_POST['legajo']) ? htmlspecialchars($_POST['legajo']) : ''; ?>" required>
-                                        <div id="legajo-feedback" class="mt-1"></div>
+                                        <label for="legajo" class="form-label">Legajo</label>
+                                        <input type="number" class="form-control" id="legajo" name="legajo" value="<?php echo $siguiente_legajo; ?>" readonly>
+                                        <small class="text-muted">Se asigna automáticamente</small>
                                     </div>
                                     <div class="col-md-3 mb-3">
                                         <label for="nombre" class="form-label required-field">Nombre</label>
@@ -269,72 +274,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Validación en tiempo real del legajo
-        let timeoutId;
-        const lejajoInput = document.getElementById('legajo');
-        const lejajoFeedback = document.getElementById('legajo-feedback');
-        const submitButton = document.querySelector('button[type="submit"]');
-        
-        lejajoInput.addEventListener('input', function() {
-            clearTimeout(timeoutId);
-            const legajo = this.value.trim();
-            
-            if (legajo === '') {
-                lejajoFeedback.innerHTML = '';
-                lejajoFeedback.className = 'mt-1';
-                return;
-            }
-            
-            if (legajo.length < 1) {
-                return;
-            }
-            
-            // Mostrar indicador de carga
-            lejajoFeedback.innerHTML = '<small class="text-muted"><i class="fas fa-spinner fa-spin"></i> Verificando...</small>';
-            lejajoFeedback.className = 'mt-1';
-            
-            // Esperar 500ms después de que el usuario deje de escribir
-            timeoutId = setTimeout(() => {
-                fetch('verify/validar_legajo.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: 'legajo=' + encodeURIComponent(legajo)
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        lejajoFeedback.innerHTML = '<small class="text-danger"><i class="fas fa-exclamation-triangle"></i> Error de validación</small>';
-                        lejajoFeedback.className = 'mt-1';
-                        return;
-                    }
-                    
-                    if (data.disponible) {
-                        lejajoFeedback.innerHTML = '<small class="text-success"><i class="fas fa-check"></i> ' + data.mensaje + '</small>';
-                        lejajoFeedback.className = 'mt-1';
-                        lejajoInput.classList.remove('is-invalid');
-                        lejajoInput.classList.add('is-valid');
-                    } else {
-                        lejajoFeedback.innerHTML = '<small class="text-danger"><i class="fas fa-times"></i> ' + data.mensaje + '</small>';
-                        lejajoFeedback.className = 'mt-1';
-                        lejajoInput.classList.remove('is-valid');
-                        lejajoInput.classList.add('is-invalid');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    lejajoFeedback.innerHTML = '<small class="text-danger"><i class="fas fa-exclamation-triangle"></i> Error de conexión</small>';
-                    lejajoFeedback.className = 'mt-1';
-                });
-            }, 500);
-        });
-        
-        // Limpiar validación visual al enfocar el campo
-        lejajoInput.addEventListener('focus', function() {
-            this.classList.remove('is-valid', 'is-invalid');
-        });
-        
         // Toggle submenu for sidebar
         document.querySelectorAll('.sidebar .has-submenu > a').forEach(item => {
             item.addEventListener('click', event => {

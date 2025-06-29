@@ -8,16 +8,14 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 require_once '../../config/config_fecha_sistema.php';
-require_once 'generar_pdf.php'; // Incluir el archivo de generación de PDF
+require_once 'generar_pdf.php';
 
-// Procesar acciones
 if ($_POST && isset($_POST['action'])) {
     $action = $_POST['action'];
     
     if ($action == 'generar_guardia') {
         $lugar_id = $_POST['lugar_id'];
         
-        // Obtener el próximo policía disponible según el día de la semana
         $stmt = $conn->prepare("CALL ObtenerProximoPoliciaDisponible(?, @policia_id, @policia_info)");
         $stmt->bind_param("i", $lugar_id);
         $stmt->execute();
@@ -355,7 +353,6 @@ function obtenerPoliciasPorLugar($conn, $lugar_id, $limite = 7) {
     return $stmt->get_result();
 }
 
-// Función para contar total de policías por lugar
 function contarPoliciasPorLugar($conn, $lugar_id) {
     $stmt = $conn->prepare("
         SELECT COUNT(*) as total
@@ -369,9 +366,8 @@ function contarPoliciasPorLugar($conn, $lugar_id) {
     return $row['total'];
 }
 ?>
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lista de Guardias - Sistema RH</title>
+    <title>Lista de Guardias</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -865,9 +861,7 @@ function contarPoliciasPorLugar($conn, $lugar_id) {
                                 <form method="POST" style="display: inline;">
                                     <input type="hidden" name="action" value="generar_guardia">
                                     <input type="hidden" name="lugar_id" value="<?php echo $lugar['id']; ?>">
-                                    <button type="submit" class="btn btn-asignar">
-                                        <i class="fas fa-plus"></i> Asignar Guardia
-                                    </button>
+                                    
                                 </form>
                             </div>
                             
@@ -989,25 +983,7 @@ function contarPoliciasPorLugar($conn, $lugar_id) {
                     <?php endwhile; ?>
                 </div>
                 
-                <div class="info-panel">
-                    <h5><i class="fas fa-info-circle"></i> Información del Sistema FIFO</h5>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <ul class="mb-0">
-                                <li><strong>Domingo a Jueves:</strong> Personal de región Central</li>
-                                <li><strong>Viernes y Sábado:</strong> Personal de región Regional</li>
-                                <li><strong>Rotación:</strong> Cada persona asignada pasa al final de su lista</li>
-                            </ul>
-                        </div>
-                        <div class="col-md-6">
-                            <ul class="mb-0">
-                                <li><strong>Restricciones:</strong> Central (15 días), Regional (30 días)</li>
-                                <li><strong>Prioridad:</strong> Posición en lista, luego jerarquía</li>
-                                <li><strong>Estado:</strong> Solo personal disponible es asignado</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
+              
             </main>
         </div>
     </div>

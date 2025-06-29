@@ -124,7 +124,7 @@ if (isset($_SESSION['usuario_id'])) {
                         <span class="nav-text">Configuración</span>
                         <i class="fas fa-chevron-right submenu-arrow"></i>
                     </a>
-
+                    
                     
                     <ul class="submenu">
                         <li>
@@ -133,28 +133,16 @@ if (isset($_SESSION['usuario_id'])) {
                                 <span>Configuración de Guardias</span>
                             </a>
                         </li>
-                         <li>
-                            <a href="/SistemaRH/admin/policias/especialidad/index.php" class="submenu-link">
-                                <i class="fas fa-certificate"></i>
-                                <span>Especialidades</span>
+                        <li>
+                            <a href="/SistemaRH/admin/config/config_legajo.php" class="submenu-link">
+                                <i class="fas fa-id-badge"></i>
+                                <span>Configuración de Legajos</span>
                             </a>
                         </li>
                         <li>
-                            <a href="/SistemaRH/admin/policias/grado/" class="submenu-link">
-                                <i class="fas fa-star"></i>
-                                <span>Grados</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="/SistemaRH/admin/policias/lugar_guardias/" class="submenu-link">
-                                <i class="fas fa-map-marker-alt"></i>
-                                <span>Lugares de Guardia</span>
-                            </a>
-                        </li>
-                         <li>
-                            <a href="/SistemaRH/admin/policias/region/index.php" class="submenu-link">
-                                <i class="fas fa-map-marker-alt"></i>
-                                <span>Region</span>
+                            <a href="/SistemaRH/admin/config/config_policias.php" class="submenu-link">
+                                <i class="fas fa-users-cog"></i>
+                                <span>Configuración de Policías</span>
                             </a>
                         </li>
                     </ul>

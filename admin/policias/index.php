@@ -98,15 +98,15 @@ $policias = $conn->query("
         /* Estilos para el buscador */
         .search-container {
             position: relative;
-            max-width: 400px;
+            width: 100%;
         }
         .search-input {
-            border-radius: 25px;
-            border: 2px solid #e9ecef;
-            padding: 12px 45px 12px 20px;
-            font-size: 16px;
+            border-radius: 6px;
+            border: 1px solid #ced4da;
+            padding: 6px 45px 6px 12px;
+            font-size: 14px;
             transition: all 0.3s ease;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            height: 31px;
         }
         .search-input:focus {
             border-color: #104c75;
@@ -115,23 +115,25 @@ $policias = $conn->query("
         }
         .search-icon {
             position: absolute;
-            right: 15px;
+            right: 12px;
             top: 50%;
             transform: translateY(-50%);
             color: #6c757d;
-            font-size: 18px;
+            font-size: 14px;
+            pointer-events: none;
         }
         .clear-search {
             position: absolute;
-            right: 40px;
+            right: 35px;
             top: 50%;
             transform: translateY(-50%);
             background: none;
             border: none;
             color: #6c757d;
-            font-size: 16px;
+            font-size: 12px;
             cursor: pointer;
             display: none;
+            padding: 2px;
         }
         .clear-search:hover {
             color: #dc3545;
@@ -151,10 +153,19 @@ $policias = $conn->query("
             padding: 40px;
             color: #6c757d;
         }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .filter-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #495057;
+        }
         .header-controls {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-end;
             margin-bottom: 20px;
             flex-wrap: wrap;
             gap: 15px;
@@ -166,6 +177,10 @@ $policias = $conn->query("
             }
             .search-container {
                 max-width: 100%;
+            }
+            .d-flex.gap-3 {
+                flex-direction: column;
+                gap: 10px !important;
             }
         }
     </style>
@@ -189,31 +204,64 @@ $policias = $conn->query("
 
                     <?php if (isset($mensaje)) echo $mensaje; ?>
 
-                    <!-- Controles del header -->
                     <div class="header-controls">
-                        <!-- Botón para agregar nuevo policía -->
-                        <div>
-                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNuevoPolicia">
-                                <i class="fas fa-user-plus"></i> Registrar Nuevo Policía
-                            </button>
+                        <div class="d-flex gap-2">
+                            <a href="agregar.php" class="btn btn-primary">
+                                <i class="fas fa-plus"></i> Registrar Nuevo Policía
+                            </a>
+                            <a href="deshabilitados.php" class="btn btn-outline-secondary">
+                                <i class="fas fa-user-slash"></i> Ver Deshabilitados
+                            </a>
                         </div>
                         
-                        <!-- Buscador en tiempo real -->
-                        <div class="search-container">
-                            <input type="text" 
-                                   id="searchInput" 
-                                   class="form-control search-input" 
-                                   placeholder="Buscar policías..." 
-                                   autocomplete="off">
-                            <button type="button" id="clearSearch" class="clear-search">
-                                <i class="fas fa-times"></i>
-                            </button>
-                            <i class="fas fa-search search-icon"></i>
-                            <div id="searchInfo" class="search-results-info"></div>
+                        <div class="d-flex gap-3 align-items-end flex-wrap">
+                            <div class="filter-group">
+                                <label class="form-label mb-1">Región:</label>
+                                <select class="form-select form-select-sm" id="filtroRegion" style="min-width: 150px;">
+                                    <option value="">Todas las regiones</option>
+                                    <?php 
+                                    $regiones->data_seek(0);
+                                    while ($region = $regiones->fetch_assoc()): 
+                                    ?>
+                                    <option value="<?php echo htmlspecialchars($region['nombre']); ?>"><?php echo htmlspecialchars($region['nombre']); ?></option>
+                                    <?php endwhile; ?>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label class="form-label mb-1">Grado:</label>
+                                <select class="form-select form-select-sm" id="filtroGrado" style="min-width: 150px;">
+                                    <option value="">Todos los grados</option>
+                                    <?php 
+                                    $grados->data_seek(0);
+                                    while ($grado = $grados->fetch_assoc()): 
+                                    ?>
+                                    <option value="<?php echo htmlspecialchars($grado['nombre']); ?>"><?php echo htmlspecialchars($grado['nombre']); ?></option>
+                                    <?php endwhile; ?>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label class="form-label mb-1">Buscar:</label>
+                                <div class="search-container" style="min-width: 250px;">
+                                    <input type="text" 
+                                           id="searchInput" 
+                                           class="form-control search-input" 
+                                           placeholder="Buscar policías..." 
+                                           autocomplete="off">
+                                    <button type="button" id="clearSearch" class="clear-search">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                    <i class="fas fa-search search-icon"></i>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label class="form-label mb-1" style="visibility: hidden;">Acción:</label>
+                                <button type="button" id="limpiarFiltros" class="btn btn-outline-secondary btn-sm">
+                                    <i class="fas fa-times"></i> Limpiar
+                                </button>
+                            </div>
                         </div>
                     </div>
-
-                    <!-- Tabla de policías -->
                     <div class="card">
                         <div class="card-header bg-primary text-white">
                             <h5><i class="fas fa-list"></i> Lista de Policías Activos</h5>
@@ -404,113 +452,136 @@ $policias = $conn->query("
     </div>
 
     <script>
-        // Funcionalidad del buscador en tiempo real
+        // Variables globales
+        let allRows = [];
+        let filteredRows = [];
+        
+        // Inicializar cuando el DOM esté listo
         document.addEventListener('DOMContentLoaded', function() {
+            // Guardar todas las filas originales
+            allRows = Array.from(document.querySelectorAll('.policia-row'));
+            filteredRows = [...allRows];
+            
+            // Event listeners para los filtros
+            document.getElementById('filtroRegion').addEventListener('change', aplicarFiltros);
+            document.getElementById('filtroGrado').addEventListener('change', aplicarFiltros);
+            document.getElementById('limpiarFiltros').addEventListener('click', limpiarFiltros);
+            
+            // Funcionalidad del buscador existente (mejorada)
             const searchInput = document.getElementById('searchInput');
             const clearButton = document.getElementById('clearSearch');
             const searchInfo = document.getElementById('searchInfo');
-            const tableBody = document.getElementById('policiasTableBody');
-            const noResults = document.getElementById('noResults');
-            const table = document.getElementById('policiasTable');
-            const allRows = document.querySelectorAll('.policia-row');
             
-            let searchTimeout;
-            
-            // Función para resaltar texto
-            function highlightText(text, searchTerm) {
-                if (!searchTerm) return text;
-                const regex = new RegExp(`(${searchTerm})`, 'gi');
-                return text.replace(regex, '<span class="highlight">$1</span>');
-            }
-            
-            // Función para limpiar resaltados
-            function clearHighlights() {
-                document.querySelectorAll('.searchable').forEach(cell => {
-                    const text = cell.textContent;
-                    cell.innerHTML = text;
-                });
-            }
-            
-            // Función principal de búsqueda
-            function performSearch() {
-                const searchTerm = searchInput.value.toLowerCase().trim();
-                let visibleCount = 0;
-                
-                // Limpiar resaltados previos
-                clearHighlights();
-                
-                allRows.forEach(row => {
-                    const searchData = row.getAttribute('data-search');
-                    const isVisible = searchData.includes(searchTerm);
-                    
-                    row.style.display = isVisible ? '' : 'none';
-                    
-                    if (isVisible) {
-                        visibleCount++;
-                        
-                        // Resaltar términos de búsqueda si hay texto
-                        if (searchTerm) {
-                            row.querySelectorAll('.searchable').forEach(cell => {
-                                const originalText = cell.textContent;
-                                cell.innerHTML = highlightText(originalText, searchTerm);
-                            });
-                        }
-                    }
-                });
-                
-                // Mostrar/ocultar mensaje de "no resultados"
-                if (visibleCount === 0 && searchTerm) {
-                    table.style.display = 'none';
-                    noResults.style.display = 'block';
-                } else {
-                    table.style.display = 'table';
-                    noResults.style.display = 'none';
-                }
-                
-                // Actualizar información de resultados
-                if (searchTerm) {
-                    searchInfo.textContent = `${visibleCount} resultado(s) encontrado(s)`;
-                    clearButton.style.display = 'block';
-                } else {
-                    searchInfo.textContent = '';
-                    clearButton.style.display = 'none';
-                }
-            }
-            
-            // Event listeners
             searchInput.addEventListener('input', function() {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(performSearch, 150); // Debounce de 150ms
-            });
-            
-            searchInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') {
-                    clearSearch();
+                const searchTerm = this.value.toLowerCase().trim();
+                
+                if (searchTerm.length > 0) {
+                    clearButton.style.display = 'block';
+                    buscarEnFilasVisibles(searchTerm);
+                } else {
+                    clearButton.style.display = 'none';
+                    mostrarFilas(filteredRows);
+                    searchInfo.textContent = '';
                 }
             });
             
-            clearButton.addEventListener('click', clearSearch);
-            
-            function clearSearch() {
+            clearButton.addEventListener('click', function() {
                 searchInput.value = '';
-                performSearch();
+                this.style.display = 'none';
+                mostrarFilas(filteredRows);
+                searchInfo.textContent = '';
                 searchInput.focus();
-            }
-            
-            // Enfocar el buscador con Ctrl+F
-            document.addEventListener('keydown', function(e) {
-                if (e.ctrlKey && e.key === 'f') {
-                    e.preventDefault();
-                    searchInput.focus();
-                }
             });
         });
         
-        function verDetalles(policiaId) {
-            // Aquí puedes implementar un modal o redireccionar a una página de detalles
-            // Por ejemplo, abrir un modal con información detallada
-            alert('Funcionalidad de ver detalles para policía ID: ' + policiaId);
-            // O redireccionar: window.location.href = 'detalle.php?id=' + policiaId;
+        // Función para aplicar filtros
+        function aplicarFiltros() {
+            const regionSeleccionada = document.getElementById('filtroRegion').value;
+            const gradoSeleccionado = document.getElementById('filtroGrado').value;
+            
+            filteredRows = allRows.filter(row => {
+                const regionRow = row.querySelector('td:nth-child(8) .badge').textContent.trim();
+                const gradoRow = row.querySelector('td:nth-child(4)').textContent.trim();
+                
+                const cumpleRegion = !regionSeleccionada || regionRow === regionSeleccionada;
+                const cumpleGrado = !gradoSeleccionado || gradoRow === gradoSeleccionado;
+                
+                return cumpleRegion && cumpleGrado;
+            });
+            
+            // Limpiar búsqueda al aplicar filtros
+            document.getElementById('searchInput').value = '';
+            document.getElementById('clearSearch').style.display = 'none';
+            
+            mostrarFilas(filteredRows);
+            actualizarInfoFiltros();
+        }
+        
+        // Función para buscar en filas visibles
+        function buscarEnFilasVisibles(searchTerm) {
+            const resultados = filteredRows.filter(row => {
+                const searchData = row.getAttribute('data-search');
+                return searchData.includes(searchTerm);
+            });
+            
+            mostrarFilas(resultados);
+            
+            // Actualizar información de búsqueda
+            const searchInfo = document.getElementById('searchInfo');
+            if (resultados.length === 0) {
+                searchInfo.textContent = 'No se encontraron resultados';
+            } else {
+                searchInfo.textContent = `${resultados.length} resultado(s) encontrado(s)`;
+            }
+        }
+        
+        // Función para mostrar filas específicas
+        function mostrarFilas(filasAMostrar) {
+            const tbody = document.getElementById('policiasTableBody');
+            const noResults = document.getElementById('noResults');
+            
+            // Ocultar todas las filas
+            allRows.forEach(row => row.style.display = 'none');
+            
+            if (filasAMostrar.length === 0) {
+                noResults.style.display = 'block';
+            } else {
+                noResults.style.display = 'none';
+                filasAMostrar.forEach(row => row.style.display = '');
+            }
+        }
+        
+        // Función para limpiar filtros
+        function limpiarFiltros() {
+            document.getElementById('filtroRegion').value = '';
+            document.getElementById('filtroGrado').value = '';
+            document.getElementById('searchInput').value = '';
+            document.getElementById('clearSearch').style.display = 'none';
+            
+            filteredRows = [...allRows];
+            mostrarFilas(filteredRows);
+            
+            document.getElementById('searchInfo').textContent = '';
+            actualizarInfoFiltros();
+        }
+        
+        // Función para actualizar información de filtros
+        function actualizarInfoFiltros() {
+            const searchInfo = document.getElementById('searchInfo');
+            const totalVisible = filteredRows.length;
+            const totalGeneral = allRows.length;
+            
+            if (totalVisible < totalGeneral) {
+                searchInfo.textContent = `Mostrando ${totalVisible} de ${totalGeneral} policías`;
+            } else {
+                searchInfo.textContent = '';
+            }
+        }
+        
+        // Función existente para ver detalles
+        function verDetalles(id) {
+            // Implementar según necesidades
+            alert('Ver detalles del policía ID: ' + id);
         }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>

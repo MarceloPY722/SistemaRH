@@ -8,6 +8,13 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
+// Obtener información del usuario logueado para verificar si es administrador
+$stmt_usuario = $conn->prepare("SELECT nombre_usuario, rol FROM usuarios WHERE id = ?");
+$stmt_usuario->bind_param("i", $_SESSION['usuario_id']);
+$stmt_usuario->execute();
+$usuario_actual = $stmt_usuario->get_result()->fetch_assoc();
+$stmt_usuario->close();
+
 // AJAX para búsqueda de policías
 if (isset($_GET['buscar_policia'])) {
     $termino = '%' . $_GET['buscar_policia'] . '%';
@@ -49,14 +56,31 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
     $descripcion = trim($_POST['descripcion']);
     $justificacion = trim($_POST['justificacion']);
     
-    $sql = "INSERT INTO ausencias (policia_id, tipo_ausencia_id, fecha_inicio, fecha_fin, descripcion, justificacion) VALUES (?, ?, ?, ?, ?, ?)";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("iissss", $policia_id, $tipo_ausencia_id, $fecha_inicio, $fecha_fin, $descripcion, $justificacion);
+    // Verificar si el usuario actual es administrador
+    $es_administrador = (strtolower($usuario_actual['rol']) === 'administrador' || strtolower($usuario_actual['rol']) === 'admin');
     
-    if ($stmt->execute()) {
-        $mensaje = "<div class='alert alert-success'>Ausencia registrada exitosamente</div>";
+    if ($es_administrador) {
+        // Si es administrador, crear la ausencia ya aprobada
+        $sql = "INSERT INTO ausencias (policia_id, tipo_ausencia_id, fecha_inicio, fecha_fin, descripcion, justificacion, estado, aprobado_por) VALUES (?, ?, ?, ?, ?, ?, 'APROBADA', ?)";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("iissssi", $policia_id, $tipo_ausencia_id, $fecha_inicio, $fecha_fin, $descripcion, $justificacion, $_SESSION['usuario_id']);
+        
+        if ($stmt->execute()) {
+            $mensaje = "<div class='alert alert-success'>Ausencia registrada y aprobada automáticamente por el administrador</div>";
+        } else {
+            $mensaje = "<div class='alert alert-danger'>Error al registrar ausencia: " . $conn->error . "</div>";
+        }
     } else {
-        $mensaje = "<div class='alert alert-danger'>Error al registrar ausencia: " . $conn->error . "</div>";
+        // Si no es administrador, crear la ausencia pendiente de aprobación
+        $sql = "INSERT INTO ausencias (policia_id, tipo_ausencia_id, fecha_inicio, fecha_fin, descripcion, justificacion) VALUES (?, ?, ?, ?, ?, ?)";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("iissss", $policia_id, $tipo_ausencia_id, $fecha_inicio, $fecha_fin, $descripcion, $justificacion);
+        
+        if ($stmt->execute()) {
+            $mensaje = "<div class='alert alert-success'>Ausencia registrada exitosamente. Pendiente de aprobación.</div>";
+        } else {
+            $mensaje = "<div class='alert alert-danger'>Error al registrar ausencia: " . $conn->error . "</div>";
+        }
     }
 }
 
@@ -74,6 +98,23 @@ if ($_POST && isset($_POST['action']) && in_array($_POST['action'], ['aprobar', 
         $mensaje = "<div class='alert alert-success'>Ausencia " . strtolower($estado) . " exitosamente</div>";
     } else {
         $mensaje = "<div class='alert alert-danger'>Error al procesar ausencia: " . $conn->error . "</div>";
+    }
+}
+
+// Procesar edición de ausencias
+if ($_POST && isset($_POST['action']) && $_POST['action'] == 'editar') {
+    $ausencia_id = $_POST['ausencia_id'];
+    $fecha_inicio = $_POST['fecha_inicio'];
+    $fecha_fin = $_POST['fecha_fin'] ?: null;
+    
+    $sql = "UPDATE ausencias SET fecha_inicio = ?, fecha_fin = ? WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("ssi", $fecha_inicio, $fecha_fin, $ausencia_id);
+    
+    if ($stmt->execute()) {
+        $mensaje = "<div class='alert alert-success'>Fechas de ausencia actualizadas exitosamente</div>";
+    } else {
+        $mensaje = "<div class='alert alert-danger'>Error al actualizar ausencia: " . $conn->error . "</div>";
     }
 }
 
@@ -325,53 +366,47 @@ $ausencias = $conn->query("
                                                 </span>
                                             </td>
                                             <td><?php echo substr($ausencia['descripcion'], 0, 50) . '...'; ?></td>
-                                            <td>
-                                                <td>
-                                                    <?php if ($ausencia['estado'] == 'PENDIENTE'): ?>
-                                                    <div class="btn-group" role="group">
-                                                        <form method="POST" style="display: inline;">
-                                                            <input type="hidden" name="action" value="aprobar">
-                                                            <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
-                                                            <button type="submit" class="btn btn-sm btn-success" 
-                                                                    onclick="return confirm('¿Aprobar esta ausencia?')">
-                                                                <i class="fas fa-check"></i>
-                                                            </button>
-                                                        </form>
-                                                        <form method="POST" style="display: inline;">
-                                                            <input type="hidden" name="action" value="rechazar">
-                                                            <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
-                                                            <button type="submit" class="btn btn-sm btn-danger" 
-                                                                    onclick="return confirm('¿Rechazar esta ausencia?')">
-                                                                <i class="fas fa-times"></i>
-                                                            </button>
-                                                        </form>
-                                                        <form method="POST" style="display: inline;">
-                                                            <input type="hidden" name="action" value="eliminar">
-                                                            <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
-                                                            <button type="submit" class="btn btn-sm btn-outline-danger" 
-                                                                    onclick="return confirm('¿Está seguro de eliminar esta ausencia? Esta acción no se puede deshacer.')">
-                                                                <i class="fas fa-trash"></i>
-                                                            </button>
-                                                        </form>
-                                                    </div>
-                                                    <?php else: ?>
-                                                    <div class="d-flex align-items-center">
-                                                        <small class="text-muted me-2">
-                                                            <?php if ($ausencia['aprobado_nombre']): ?>
-                                                                Por: <?php echo $ausencia['aprobado_apellido'] . ', ' . $ausencia['aprobado_nombre']; ?>
-                                                            <?php endif; ?>
-                                                        </small>
-                                                        <form method="POST" style="display: inline;">
-                                                            <input type="hidden" name="action" value="eliminar">
-                                                            <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
-                                                            <button type="submit" class="btn btn-sm btn-outline-danger" 
-                                                                    onclick="return confirm('¿Está seguro de eliminar esta ausencia? Esta acción no se puede deshacer.')">
-                                                                <i class="fas fa-trash"></i>
-                                                            </button>
-                                                        </form>
-                                                    </div>
-                                                    <?php endif; ?>
-                                                </td>
+                                            <td class="text-center">
+                                                <?php if ($ausencia['estado'] == 'PENDIENTE'): ?>
+                                                <div class="btn-group" role="group">
+                                                    <form method="POST" style="display: inline;">
+                                                        <input type="hidden" name="action" value="aprobar">
+                                                        <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
+                                                        <button type="submit" class="btn btn-sm btn-success" 
+                                                                onclick="return confirm('¿Aprobar esta ausencia?')">
+                                                            <i class="fas fa-check"></i>
+                                                        </button>
+                                                    </form>
+                                                    <form method="POST" style="display: inline;">
+                                                        <input type="hidden" name="action" value="rechazar">
+                                                        <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
+                                                        <button type="submit" class="btn btn-sm btn-danger" 
+                                                                onclick="return confirm('¿Rechazar esta ausencia?')">
+                                                            <i class="fas fa-times"></i>
+                                                        </button>
+                                                    </form>
+                                                    <button type="button" class="btn btn-sm btn-info" 
+                                                            onclick="editarAusencia(<?php echo $ausencia['id']; ?>, '<?php echo $ausencia['fecha_inicio']; ?>', '<?php echo $ausencia['fecha_fin']; ?>')">
+                                                        <i class="fas fa-edit"></i>
+                                                    </button>
+                                                </div>
+                                                <?php else: ?>
+                                                <div class="btn-group" role="group">
+                                                    <button type="button" class="btn btn-sm btn-info" 
+                                                            onclick="editarAusencia(<?php echo $ausencia['id']; ?>, '<?php echo $ausencia['fecha_inicio']; ?>', '<?php echo $ausencia['fecha_fin']; ?>')">
+                                                        <i class="fas fa-edit"></i>
+                                                    </button>
+                                                    <form method="POST" style="display: inline;">
+                                                        <input type="hidden" name="action" value="eliminar">
+                                                        <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger" 
+                                                                onclick="return confirm('¿Está seguro de eliminar esta ausencia? Esta acción no se puede deshacer.')">
+                                                            <i class="fas fa-trash"></i>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                                <?php endif; ?>
+                                            </td>
                                         </tr>
                                         <?php endwhile; ?>
                                         <?php else: ?>
@@ -391,6 +426,48 @@ $ausencias = $conn->query("
         </div>
     </div>
 
+    <!-- Modal para editar fechas de ausencia -->
+    <div class="modal fade" id="editarAusenciaModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Editar Fechas de Ausencia</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST">
+                    <div class="modal-body">
+                        <input type="hidden" name="action" value="editar">
+                        <input type="hidden" name="ausencia_id" id="edit_ausencia_id">
+                        
+                        <div class="mb-3">
+                            <label for="edit_fecha_inicio" class="form-label">Fecha de Inicio</label>
+                            <input type="date" class="form-control" name="fecha_inicio" id="edit_fecha_inicio" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="edit_fecha_fin" class="form-label">Fecha de Fin (opcional)</label>
+                            <input type="date" class="form-control" name="fecha_fin" id="edit_fecha_fin">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+    function editarAusencia(id, fechaInicio, fechaFin) {
+        document.getElementById('edit_ausencia_id').value = id;
+        document.getElementById('edit_fecha_inicio').value = fechaInicio;
+        document.getElementById('edit_fecha_fin').value = fechaFin || '';
+        
+        var modal = new bootstrap.Modal(document.getElementById('editarAusenciaModal'));
+        modal.show();
+    }
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let timeoutId;

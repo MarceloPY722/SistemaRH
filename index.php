@@ -51,245 +51,236 @@ if ($_POST) {
     <title>Sistema RH - Policía Nacional de Paraguay</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
-            background: linear-gradient(135deg, #104c75 0%, #0d3d5c 100%);
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            padding: 20px 0;
-        }
-        .container {
-            width: 100%;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 15px;
-        }
-        .login-container {
-            background: rgba(255, 255, 255, 0.98);
-            border-radius: 25px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-            overflow: hidden;
-            backdrop-filter: blur(10px);
-            margin: 20px 0;
-        }
-        .login-header {
-            background: linear-gradient(45deg, #104c75, #0d3d5c);
-            color: white;
-            text-align: center;
-            padding: 50px 30px;
-        }
-        .login-header h2 {
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 10px;
-        }
-        .login-header h4 {
-            font-size: 1.3rem;
-            font-weight: 500;
-            margin-bottom: 15px;
-            opacity: 0.9;
-        }
-        .login-header p {
-            font-size: 1rem;
-            opacity: 0.8;
-        }
-        .login-body {
-            padding: 50px 40px;
-        }
-        .form-control {
-            border-radius: 15px;
-            border: 2px solid #e9ecef;
-            padding: 18px 25px;
-            font-size: 16px;
-            transition: all 0.3s ease;
-            background: rgba(255, 255, 255, 0.9);
-        }
-        .form-control:focus {
-            border-color: #104c75;
-            box-shadow: 0 0 0 0.2rem rgba(16, 76, 117, 0.25);
-            background: white;
-        }
-        .form-label {
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
-        .form-label i {
-            margin-right: 10px;
-            color: #104c75;
-            width: 20px;
-        }
-        .btn-login {
-            background: linear-gradient(45deg, #104c75, #0d3d5c);
-            border: none;
-            border-radius: 25px;
-            padding: 18px 40px;
-            font-size: 18px;
-            font-weight: 600;
-            color: white;
-            width: 100%;
-            transition: all 0.3s ease;
-        }
-        .btn-login:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 25px rgba(16, 76, 117, 0.4);
-            color: white;
-            background: linear-gradient(45deg, #0d3d5c, #104c75);
-        }
-        .police-badge {
-            font-size: 5rem;
-            color: #f39c12;
-            margin-bottom: 25px;
-            text-shadow: 0 4px 8px rgba(0,0,0,0.3);
-        }
-        .alert {
-            border-radius: 15px;
-            border: none;
-            padding: 15px 20px;
-            margin-bottom: 25px;
-            font-weight: 500;
-        }
-        .footer-info {
-            background: rgba(52, 73, 94, 0.1);
+            justify-content: center;
             padding: 20px;
-            text-align: center;
-            border-radius: 10px;
-            margin-top: 30px;
         }
         
-        /* Responsive Design */
-        @media (max-width: 768px) {
-            body {
-                padding: 10px 0;
+        .login-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+            width: 100%;
+            max-width: 400px;
+            padding: 40px 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .logo-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 15px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+        
+        .logo-icon i {
+            font-size: 24px;
+            color: white;
+        }
+        
+        .logo-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 5px;
+        }
+        
+        .logo-subtitle {
+            font-size: 14px;
+            color: #718096;
+            font-weight: 400;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+        
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #4a5568;
+            margin-bottom: 8px;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            background: #f7fafc;
+            color: #2d3748;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .form-control::placeholder {
+            color: #a0aec0;
+        }
+        
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+        
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 35px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-login:active {
+            transform: translateY(0);
+        }
+        
+        .alert {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            border: 1px solid #feb2b2;
+        }
+        
+        .footer-text {
+            text-align: center;
+            margin-top: 25px;
+            font-size: 12px;
+            color: #a0aec0;
+        }
+        
+        /* Responsive */
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 30px 20px;
+                margin: 10px;
             }
-            .container {
-                padding: 0 10px;
+            
+            .logo-title {
+                font-size: 20px;
             }
-            .login-header {
-                padding: 35px 20px;
-            }
-            .login-header h2 {
-                font-size: 1.6rem;
-            }
-            .login-header h4 {
-                font-size: 1.1rem;
-            }
-            .login-header p {
-                font-size: 0.9rem;
-            }
-            .login-body {
-                padding: 35px 25px;
-            }
-            .police-badge {
-                font-size: 3.5rem;
-            }
+            
             .form-control {
-                padding: 15px 20px;
-                font-size: 15px;
-            }
-            .btn-login {
-                padding: 15px 30px;
                 font-size: 16px;
             }
-            .footer-info {
-                padding: 15px;
-                margin-top: 20px;
+        }
+        
+        /* Animaciones */
+        .login-container {
+            animation: slideUp 0.6s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
             }
         }
         
-        @media (max-width: 480px) {
-            .login-header {
-                padding: 25px 15px;
-            }
-            .login-header h2 {
-                font-size: 1.4rem;
-            }
-            .login-header h4 {
-                font-size: 1rem;
-            }
-            .login-body {
-                padding: 25px 20px;
-            }
-            .police-badge {
-                font-size: 3rem;
-            }
-            .form-control {
-                padding: 12px 15px;
-                font-size: 14px;
-            }
-            .btn-login {
-                padding: 12px 25px;
-                font-size: 15px;
-            }
+        .form-group {
+            animation: fadeIn 0.8s ease-out;
         }
         
-        @media (max-width: 360px) {
-            .login-header h2 {
-                font-size: 1.2rem;
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
             }
-            .police-badge {
-                font-size: 2.5rem;
+            to {
+                opacity: 1;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-12 col-sm-10 col-md-8 col-lg-6 col-xl-5">
-                <div class="login-container">
-                    <div class="login-header">
-                        <div class="police-badge">
-                            <i class="fas fa-shield-alt"></i>
-                        </div>
-                        <h2>Sistema de Recursos Humanos</h2>
-                        <h4>Policía Nacional de Paraguay</h4>
-                        <p class="mb-0">Automatización de Guardias y Servicios</p>
-                    </div>
-                    
-                    <div class="login-body">
-                        <?php if ($error): ?>
-                            <div class="alert alert-danger">
-                                <i class="fas fa-exclamation-triangle"></i> <?php echo $error; ?>
-                            </div>
-                        <?php endif; ?>
-                        
-                        <form method="POST">
-                            <div class="mb-4">
-                                <label for="nombre_usuario" class="form-label">
-                                    <i class="fas fa-user"></i> Usuario
-                                </label>
-                                <input type="text" class="form-control" id="nombre_usuario" name="nombre_usuario" 
-                                       placeholder="Ingrese su usuario" required>
-                            </div>
-                            
-                            <div class="mb-4">
-                                <label for="contraseña" class="form-label">
-                                    <i class="fas fa-lock"></i> Contraseña
-                                </label>
-                                <input type="password" class="form-control" id="contraseña" name="contraseña" 
-                                       placeholder="Ingrese su contraseña" required>
-                            </div>
-                            
-                            <div class="d-grid">
-                                <button type="submit" class="btn btn-login">
-                                    <i class="fas fa-sign-in-alt"></i> Iniciar Sesión
-                                </button>
-                            </div>
-                        </form>
-                        
-                        <div class="footer-info">
-                            <small class="text-muted">
-                                <i class="fas fa-info-circle"></i> 
-                                Sistema desarrollado para la gestión de recursos humanos
-                            </small>
-                        </div>
-                    </div>
-                </div>
+    <div class="login-container">
+        <div class="logo-section">
+            <div class="logo-icon">
+                <i class="fas fa-shield-alt"></i>
             </div>
+            <h1 class="logo-title">Sistema RH</h1>
+            <p class="logo-subtitle">Policía Nacional de Paraguay</p>
+        </div>
+        
+        <?php if ($error): ?>
+            <div class="alert">
+                <i class="fas fa-exclamation-triangle"></i> <?php echo $error; ?>
+            </div>
+        <?php endif; ?>
+        
+        <form method="POST">
+            <div class="form-group">
+                <label for="nombre_usuario" class="form-label">Usuario</label>
+                <input type="text" 
+                       class="form-control" 
+                       id="nombre_usuario" 
+                       name="nombre_usuario" 
+                       placeholder="Ingrese su usuario"
+                       value="<?php echo isset($_POST['nombre_usuario']) ? htmlspecialchars($_POST['nombre_usuario']) : ''; ?>"
+                       required>
+            </div>
+            
+            <div class="form-group">
+                <label for="contraseña" class="form-label">Contraseña</label>
+                <input type="password" 
+                       class="form-control" 
+                       id="contraseña" 
+                       name="contraseña" 
+                       placeholder="Ingrese su contraseña"
+                       required>
+            </div>
+            
+            <button type="submit" class="btn-login">
+                <i class="fas fa-sign-in-alt"></i> Iniciar Sesión
+            </button>
+        </form>
+        
+        <div class="footer-text">
+            Sistema de gestión de recursos humanos
         </div>
     </div>
     
