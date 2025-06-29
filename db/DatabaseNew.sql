@@ -3,9 +3,9 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: localhost:3306
--- Tiempo de generación: 26-06-2025 a las 17:54:41
--- Versión del servidor: 5.7.33
--- Versión de PHP: 7.4.19
+-- Tiempo de generación: 29-06-2025 a las 15:31:02
+-- Versión del servidor: 8.4.3
+-- Versión de PHP: 8.3.16
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -21,17 +21,11 @@ SET time_zone = "+00:00";
 -- Base de datos: `sistema_rh_policia`
 --
 
+DELIMITER $$
 --
 -- Procedimientos
 --
-
---
--- Procedure InicializarColaFIFO
---
-DELIMITER $$
-DROP PROCEDURE IF EXISTS `InicializarColaFIFO`$$
-CREATE PROCEDURE `InicializarColaFIFO`()
-BEGIN
+CREATE DEFINER=`root`@`localhost` PROCEDURE `InicializarColaFIFO` ()   BEGIN
     DECLARE done INT DEFAULT FALSE;
     DECLARE policia_id_var INT;
     DECLARE posicion_counter INT DEFAULT 1;
@@ -75,13 +69,7 @@ BEGIN
     WHERE posicion <= 7;
 END$$
 
---
--- Procedure InicializarColaFIFOPorLugar
---
-DELIMITER $$
-DROP PROCEDURE IF EXISTS `InicializarColaFIFOPorLugar`$$
-CREATE PROCEDURE `InicializarColaFIFOPorLugar`()
-BEGIN
+CREATE DEFINER=`root`@`localhost` PROCEDURE `InicializarColaFIFOPorLugar` ()   BEGIN
     DECLARE done INT DEFAULT FALSE;
     DECLARE lugar_id_var INT;
     
@@ -135,13 +123,7 @@ BEGIN
     CLOSE lugares_cursor;
 END$$
 
---
--- Procedure ObtenerProximoPoliciaDisponible
---
-DELIMITER $$
-DROP PROCEDURE IF EXISTS `ObtenerProximoPoliciaDisponible`$$
-CREATE PROCEDURE `ObtenerProximoPoliciaDisponible`(IN `lugar_id_param` INT, IN `region_requerida` VARCHAR(50))
-BEGIN
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ObtenerProximoPoliciaDisponible` (IN `lugar_id_param` INT, IN `region_requerida` VARCHAR(50))   BEGIN
     DECLARE dia_semana INT;
     
     -- Obtener día de la semana (1=Domingo, 2=Lunes, ..., 7=Sábado)
@@ -186,13 +168,7 @@ BEGIN
     LIMIT 1;
 END$$
 
---
--- Procedure ReorganizarListaGuardias
---
-DELIMITER $$
-DROP PROCEDURE IF EXISTS `ReorganizarListaGuardias`$$
-CREATE PROCEDURE `ReorganizarListaGuardias`()
-BEGIN
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ReorganizarListaGuardias` ()   BEGIN
     DECLARE done INT DEFAULT FALSE;
     DECLARE policia_id_var INT;
     DECLARE posicion_counter INT DEFAULT 1;
@@ -224,10 +200,7 @@ BEGIN
     CLOSE cur;
 END$$
 
-DELIMITER $$
-DROP PROCEDURE IF EXISTS `ReorganizarListaGuardiasFIFO`$$
-CREATE DEFINER=`root`@`localhost` PROCEDURE `ReorganizarListaGuardiasFIFO`()
-BEGIN
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ReorganizarListaGuardiasFIFO` ()   BEGIN
     DECLARE done INT DEFAULT FALSE;
     DECLARE policia_id_var INT;
     DECLARE posicion_counter INT DEFAULT 1;
@@ -265,13 +238,7 @@ BEGIN
     CLOSE cur;
 END$$
 
---
--- Procedure ReorganizarListaPorLegajo
---
-DELIMITER $$
-DROP PROCEDURE IF EXISTS `ReorganizarListaPorLegajo`$$
-CREATE PROCEDURE `ReorganizarListaPorLegajo`()
-BEGIN
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ReorganizarListaPorLegajo` ()   BEGIN
     DECLARE done INT DEFAULT FALSE;
     DECLARE policia_id_var INT;
     DECLARE lugar_id_var INT;
@@ -326,10 +293,7 @@ BEGIN
     CLOSE lugares_cursor;
 END$$
 
-DELIMITER $$
-DROP PROCEDURE IF EXISTS `RotarGuardia`$$
-CREATE DEFINER=`root`@`localhost` PROCEDURE `RotarGuardia`(IN `policia_id_param` INT)
-BEGIN
+CREATE DEFINER=`root`@`localhost` PROCEDURE `RotarGuardia` (IN `policia_id_param` INT)   BEGIN
     DECLARE max_posicion INT;
     
     -- Obtener la máxima posición
@@ -350,10 +314,7 @@ BEGIN
         posicion;
 END$$
 
-DELIMITER $$
-DROP PROCEDURE IF EXISTS `RotarGuardiaFIFO`$$
-CREATE DEFINER=`root`@`localhost` PROCEDURE `RotarGuardiaFIFO`(IN `policia_id_param` INT)
-BEGIN
+CREATE DEFINER=`root`@`localhost` PROCEDURE `RotarGuardiaFIFO` (IN `policia_id_param` INT)   BEGIN
     DECLARE region_policia VARCHAR(50);
     DECLARE fecha_disponible DATE;
     DECLARE lugar_guardia_id INT;
@@ -405,15 +366,15 @@ DELIMITER ;
 --
 
 CREATE TABLE `asignaciones_servicios` (
-  `id` int(11) NOT NULL,
-  `servicio_id` int(11) NOT NULL,
-  `policia_id` int(11) NOT NULL,
-  `puesto` varchar(100) COLLATE utf8mb4_spanish2_ci NOT NULL,
-  `lugar` varchar(150) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `id` int NOT NULL,
+  `servicio_id` int NOT NULL,
+  `policia_id` int NOT NULL,
+  `puesto` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `lugar` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
   `hora_inicio` time DEFAULT NULL,
   `hora_fin` time DEFAULT NULL,
-  `telefono_contacto` varchar(20) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
-  `observaciones` text COLLATE utf8mb4_spanish2_ci,
+  `telefono_contacto` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `observaciones` text CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish2_ci;
 
@@ -424,19 +385,26 @@ CREATE TABLE `asignaciones_servicios` (
 --
 
 CREATE TABLE `ausencias` (
-  `id` int(11) NOT NULL,
-  `policia_id` int(11) NOT NULL,
-  `tipo_ausencia_id` int(11) NOT NULL,
+  `id` int NOT NULL,
+  `policia_id` int NOT NULL,
+  `tipo_ausencia_id` int NOT NULL,
   `fecha_inicio` date NOT NULL,
   `fecha_fin` date DEFAULT NULL,
-  `descripcion` text COLLATE utf8mb4_spanish2_ci,
-  `justificacion` text COLLATE utf8mb4_spanish2_ci,
-  `documento_adjunto` varchar(255) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
-  `aprobado_por` int(11) DEFAULT NULL,
-  `estado` enum('PENDIENTE','APROBADA','RECHAZADA') COLLATE utf8mb4_spanish2_ci DEFAULT 'PENDIENTE',
+  `descripcion` text CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci,
+  `justificacion` text CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci,
+  `documento_adjunto` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `aprobado_por` int DEFAULT NULL,
+  `estado` enum('PENDIENTE','APROBADA','RECHAZADA') CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT 'PENDIENTE',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish2_ci;
+
+--
+-- Volcado de datos para la tabla `ausencias`
+--
+
+INSERT INTO `ausencias` (`id`, `policia_id`, `tipo_ausencia_id`, `fecha_inicio`, `fecha_fin`, `descripcion`, `justificacion`, `documento_adjunto`, `aprobado_por`, `estado`, `created_at`, `updated_at`) VALUES
+(5, 41, 5, '2025-06-28', '2025-07-12', 'Capacitacion', '', NULL, 1, 'APROBADA', '2025-06-28 17:33:59', '2025-06-28 17:43:22');
 
 -- --------------------------------------------------------
 
@@ -445,9 +413,9 @@ CREATE TABLE `ausencias` (
 --
 
 CREATE TABLE `especialidades` (
-  `id` int(11) NOT NULL,
-  `nombre` varchar(150) COLLATE utf8mb4_spanish2_ci NOT NULL,
-  `descripcion` text COLLATE utf8mb4_spanish2_ci,
+  `id` int NOT NULL,
+  `nombre` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `descripcion` text CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish2_ci;
@@ -467,10 +435,10 @@ INSERT INTO `especialidades` (`id`, `nombre`, `descripcion`, `created_at`, `upda
 --
 
 CREATE TABLE `grados` (
-  `id` int(11) NOT NULL,
-  `nombre` varchar(100) COLLATE utf8mb4_spanish2_ci NOT NULL,
-  `nivel_jerarquia` int(11) NOT NULL,
-  `abreviatura` varchar(20) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `id` int NOT NULL,
+  `nombre` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `nivel_jerarquia` int NOT NULL,
+  `abreviatura` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish2_ci;
@@ -503,265 +471,15 @@ INSERT INTO `grados` (`id`, `nombre`, `nivel_jerarquia`, `abreviatura`, `created
 --
 
 CREATE TABLE `guardias_realizadas` (
-  `id` int(11) NOT NULL,
-  `policia_id` int(11) NOT NULL,
+  `id` int NOT NULL,
+  `policia_id` int NOT NULL,
   `fecha_inicio` datetime NOT NULL,
   `fecha_fin` datetime NOT NULL,
-  `lugar_guardia_id` int(11) NOT NULL,
-  `puesto` varchar(100) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
-  `observaciones` text COLLATE utf8mb4_spanish2_ci,
+  `lugar_guardia_id` int NOT NULL,
+  `puesto` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `observaciones` text CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish2_ci;
-
---
--- Volcado de datos para la tabla `guardias_realizadas`
---
-
-INSERT INTO `guardias_realizadas` (`id`, `policia_id`, `fecha_inicio`, `fecha_fin`, `lugar_guardia_id`, `puesto`, `observaciones`, `created_at`) VALUES
-(1, 96, '2025-06-25 15:57:12', '2025-06-26 15:57:12', 4, NULL, 'Guardia asignada automáticamente', '2025-06-25 18:57:12'),
-(2, 1, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(3, 6, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(4, 13, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(5, 13, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(6, 13, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(7, 20, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(8, 20, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(9, 5, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(10, 12, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(11, 12, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(12, 12, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(13, 12, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(14, 26, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(15, 26, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(16, 3, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(17, 10, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(18, 10, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(19, 10, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(20, 10, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(21, 24, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(22, 24, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(23, 2, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(24, 9, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(25, 9, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(26, 9, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(27, 9, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(28, 30, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(29, 30, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(30, 4, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(31, 11, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(32, 11, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(33, 11, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(34, 11, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(35, 25, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(36, 25, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(37, 7, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(38, 56, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(39, 56, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(40, 56, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(41, 56, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(42, 28, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(43, 28, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(44, 8, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(45, 8, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(46, 8, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(47, 8, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(48, 8, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(49, 29, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(50, 29, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:09:49'),
-(51, 13, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(52, 13, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(53, 13, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(54, 13, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(55, 13, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(56, 20, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(57, 20, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(58, 12, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(59, 12, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(60, 12, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(61, 12, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(62, 12, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(63, 26, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(64, 26, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(65, 10, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(66, 10, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(67, 10, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(68, 10, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(69, 10, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(70, 24, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(71, 24, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(72, 9, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(73, 9, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(74, 9, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(75, 9, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(76, 9, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(77, 30, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(78, 30, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(79, 11, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(80, 11, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(81, 11, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(82, 11, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(83, 11, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(84, 25, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(85, 25, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(86, 56, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(87, 56, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(88, 56, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(89, 56, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(90, 56, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(91, 28, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(92, 28, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(93, 8, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(94, 8, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(95, 8, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(96, 8, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(97, 8, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(98, 29, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(99, 29, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:10:23'),
-(100, 1, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(101, 6, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(102, 13, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(103, 13, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(104, 13, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(105, 20, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(106, 20, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(107, 5, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(108, 12, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(109, 12, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(110, 12, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(111, 12, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(112, 26, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(113, 26, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(114, 3, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(115, 10, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(116, 10, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(117, 10, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(118, 10, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(119, 24, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(120, 24, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(121, 2, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(122, 9, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(123, 9, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(124, 9, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(125, 9, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(126, 30, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(127, 30, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(128, 4, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(129, 11, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(130, 11, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(131, 11, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(132, 11, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(133, 25, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(134, 25, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(135, 7, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(136, 56, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(137, 56, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(138, 56, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(139, 56, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(140, 28, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(141, 28, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(142, 8, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(143, 8, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(144, 8, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(145, 8, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(146, 8, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(147, 29, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(148, 29, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:09'),
-(149, 13, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(150, 13, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(151, 13, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(152, 13, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(153, 13, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(154, 20, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(155, 20, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(156, 12, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(157, 12, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(158, 12, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(159, 12, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(160, 12, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(161, 26, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(162, 26, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(163, 10, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(164, 10, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(165, 10, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(166, 10, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(167, 10, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(168, 24, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(169, 24, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(170, 9, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(171, 9, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(172, 9, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(173, 9, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(174, 9, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(175, 30, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(176, 30, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(177, 11, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(178, 11, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(179, 11, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(180, 11, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(181, 11, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(182, 25, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(183, 25, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(184, 56, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(185, 56, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(186, 56, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(187, 56, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(188, 56, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(189, 28, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(190, 28, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(191, 8, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(192, 8, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(193, 8, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(194, 8, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(195, 8, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(196, 29, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(197, 29, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:44:42'),
-(198, 1, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(199, 6, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(200, 13, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(201, 48, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(202, 76, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(203, 20, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(204, 27, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 5, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(205, 5, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(206, 12, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(207, 40, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(208, 68, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(209, 96, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(210, 26, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 4, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(211, 3, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(212, 10, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(213, 52, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(214, 80, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(215, 45, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(216, 24, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(217, 31, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 2, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(218, 2, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(219, 9, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(220, 44, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(221, 72, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(222, 100, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(223, 30, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(224, 23, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 1, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(225, 4, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(226, 11, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(227, 32, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(228, 60, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(229, 88, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(230, 25, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 3, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(231, 7, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(232, 56, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(233, 84, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(234, 14, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(235, 49, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(236, 28, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(237, 21, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 6, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(238, 8, '2025-06-29 06:00:00', '2025-06-30 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(239, 36, '2025-06-30 06:00:00', '2025-07-01 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(240, 64, '2025-07-01 06:00:00', '2025-07-02 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(241, 92, '2025-07-02 06:00:00', '2025-07-03 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(242, 15, '2025-07-03 06:00:00', '2025-07-04 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(243, 29, '2025-07-04 06:00:00', '2025-07-05 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22'),
-(244, 22, '2025-07-05 06:00:00', '2025-07-06 06:00:00', 7, NULL, 'Guardia semanal generada automáticamente', '2025-06-26 17:54:22');
 
 -- --------------------------------------------------------
 
@@ -770,19 +488,12 @@ INSERT INTO `guardias_realizadas` (`id`, `policia_id`, `fecha_inicio`, `fecha_fi
 --
 
 CREATE TABLE `guardias_semanales` (
-  `id` int(11) NOT NULL,
+  `id` int NOT NULL,
   `fecha_inicio` date NOT NULL,
   `fecha_fin` date NOT NULL,
-  `usuario_id` int(11) NOT NULL,
+  `usuario_id` int NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish2_ci;
-
---
--- Volcado de datos para la tabla `guardias_semanales`
---
-
-INSERT INTO `guardias_semanales` (`id`, `fecha_inicio`, `fecha_fin`, `usuario_id`, `created_at`) VALUES
-(1, '2025-06-29', '2025-07-05', 1, '2025-06-26 17:09:49');
 
 -- --------------------------------------------------------
 
@@ -791,9 +502,9 @@ INSERT INTO `guardias_semanales` (`id`, `fecha_inicio`, `fecha_fin`, `usuario_id
 --
 
 CREATE TABLE `lista_guardias` (
-  `id` int(11) NOT NULL,
-  `policia_id` int(11) NOT NULL,
-  `posicion` int(11) NOT NULL,
+  `id` int NOT NULL,
+  `policia_id` int NOT NULL,
+  `posicion` int NOT NULL,
   `ultima_guardia_fecha` date DEFAULT NULL,
   `fecha_disponible` date DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
@@ -805,107 +516,107 @@ CREATE TABLE `lista_guardias` (
 --
 
 INSERT INTO `lista_guardias` (`id`, `policia_id`, `posicion`, `ultima_guardia_fecha`, `fecha_disponible`, `created_at`, `updated_at`) VALUES
-(405, 2, 16, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(406, 9, 17, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(407, 44, 18, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(408, 72, 19, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(409, 100, 20, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(410, 37, 6, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(411, 65, 7, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(412, 93, 8, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(413, 16, 9, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(414, 30, 21, '2025-06-26', '2025-07-26', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(415, 58, 11, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(416, 86, 12, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(417, 23, 22, '2025-06-26', '2025-07-26', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(418, 51, 14, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(419, 79, 15, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(420, 3, 16, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(421, 10, 17, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(422, 24, 21, '2025-06-26', '2025-07-26', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(423, 52, 18, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(424, 80, 19, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(425, 45, 20, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(426, 73, 7, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(427, 101, 8, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(428, 17, 9, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(429, 38, 10, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(430, 66, 11, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(431, 94, 12, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(432, 31, 22, '2025-06-26', '2025-07-26', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(433, 59, 14, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(434, 87, 15, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(435, 4, 15, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(436, 11, 16, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(437, 32, 17, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(438, 60, 18, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(439, 88, 19, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(440, 25, 20, '2025-06-26', '2025-07-26', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(441, 53, 7, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(442, 81, 8, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(443, 46, 9, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(444, 74, 10, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(445, 18, 11, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(446, 39, 12, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(447, 67, 13, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(448, 95, 14, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(449, 5, 15, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(450, 12, 16, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(451, 40, 17, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(452, 68, 18, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(453, 96, 19, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(454, 33, 6, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(455, 61, 7, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(456, 89, 8, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(457, 26, 20, '2025-06-26', '2025-07-26', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(458, 54, 10, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(459, 82, 11, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(460, 19, 12, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(461, 47, 13, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(462, 75, 14, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(463, 1, 16, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(464, 6, 17, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(465, 13, 18, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(466, 20, 21, '2025-06-26', '2025-07-26', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(467, 48, 19, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(468, 76, 20, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(469, 41, 7, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(470, 69, 8, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(471, 97, 9, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(472, 34, 10, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(473, 62, 11, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(474, 90, 12, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(475, 27, 22, '2025-06-26', '2025-07-26', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(476, 55, 14, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(477, 83, 15, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(478, 7, 15, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(479, 28, 20, '2025-06-26', '2025-07-26', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(480, 56, 16, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(481, 84, 17, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(482, 14, 18, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(483, 21, 21, '2025-06-26', '2025-07-26', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(484, 49, 19, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(485, 77, 8, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(486, 42, 9, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(487, 70, 10, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(488, 98, 11, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(489, 35, 12, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(490, 63, 13, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(491, 91, 14, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(492, 8, 15, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(493, 36, 16, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(494, 64, 17, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(495, 92, 18, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(496, 15, 19, '2025-06-26', '2025-07-11', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(497, 29, 20, '2025-06-26', '2025-07-26', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(498, 57, 7, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(499, 85, 8, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(500, 22, 21, '2025-06-26', '2025-07-26', '2025-06-26 17:53:59', '2025-06-26 17:54:22'),
-(501, 50, 10, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(502, 78, 11, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(503, 43, 12, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(504, 71, 13, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59'),
-(505, 99, 14, NULL, NULL, '2025-06-26 17:53:59', '2025-06-26 17:53:59');
+(1920, 1, 1, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1921, 2, 2, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1922, 3, 3, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1923, 4, 4, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1924, 5, 5, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1925, 6, 6, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1926, 7, 7, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1927, 8, 8, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1928, 9, 9, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1929, 10, 10, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1930, 11, 11, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1931, 12, 12, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1932, 13, 13, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1933, 20, 14, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1934, 24, 15, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1935, 28, 16, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1936, 32, 17, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1937, 36, 18, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1938, 40, 19, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1939, 44, 20, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1940, 48, 21, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1941, 52, 22, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1942, 56, 23, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1943, 60, 24, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1944, 64, 25, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1945, 68, 26, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1946, 72, 27, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1947, 76, 28, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1948, 80, 29, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1949, 84, 30, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1950, 88, 31, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1951, 92, 32, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1952, 96, 33, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1953, 100, 34, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1954, 14, 35, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1955, 15, 36, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1956, 21, 37, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1957, 25, 38, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1958, 29, 39, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1959, 33, 40, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1960, 37, 41, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1961, 41, 42, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1962, 45, 43, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1963, 49, 44, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1964, 53, 45, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1965, 57, 46, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1966, 61, 47, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1967, 65, 48, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1968, 69, 49, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1969, 73, 50, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1970, 77, 51, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1971, 81, 52, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1972, 85, 53, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1973, 89, 54, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1974, 93, 55, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1975, 97, 56, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1976, 101, 57, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1977, 16, 58, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1978, 17, 59, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1979, 22, 60, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1980, 26, 61, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1981, 30, 62, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1982, 34, 63, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1983, 38, 64, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1984, 42, 65, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1985, 46, 66, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1986, 50, 67, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1987, 54, 68, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1988, 58, 69, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1989, 62, 70, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1990, 66, 71, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1991, 70, 72, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1992, 74, 73, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1993, 78, 74, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1994, 82, 75, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1995, 86, 76, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1996, 90, 77, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1997, 94, 78, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1998, 98, 79, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(1999, 18, 80, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2000, 19, 81, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2001, 23, 82, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2002, 27, 83, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2003, 31, 84, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2004, 35, 85, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2005, 39, 86, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2006, 43, 87, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2007, 47, 88, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2008, 51, 89, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2009, 55, 90, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2010, 59, 91, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2011, 63, 92, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2012, 67, 93, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2013, 71, 94, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2014, 75, 95, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2015, 79, 96, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2016, 83, 97, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2017, 87, 98, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2018, 91, 99, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2019, 95, 100, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59'),
+(2020, 99, 101, NULL, NULL, '2025-06-28 15:27:59', '2025-06-28 15:27:59');
 
 -- --------------------------------------------------------
 
@@ -914,11 +625,11 @@ INSERT INTO `lista_guardias` (`id`, `policia_id`, `posicion`, `ultima_guardia_fe
 --
 
 CREATE TABLE `lugares_guardias` (
-  `id` int(11) NOT NULL,
-  `nombre` varchar(100) COLLATE utf8mb4_spanish2_ci NOT NULL,
-  `descripcion` text COLLATE utf8mb4_spanish2_ci,
-  `direccion` varchar(200) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
-  `zona` varchar(50) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `id` int NOT NULL,
+  `nombre` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `descripcion` text CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci,
+  `direccion` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `zona` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
   `activo` tinyint(1) DEFAULT '1',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -944,20 +655,20 @@ INSERT INTO `lugares_guardias` (`id`, `nombre`, `descripcion`, `direccion`, `zon
 --
 
 CREATE TABLE `policias` (
-  `id` int(11) NOT NULL,
-  `legajo` int(11) NOT NULL,
-  `nombre` varchar(100) COLLATE utf8mb4_spanish2_ci NOT NULL,
-  `apellido` varchar(100) COLLATE utf8mb4_spanish2_ci NOT NULL,
-  `cin` varchar(20) COLLATE utf8mb4_spanish2_ci NOT NULL,
-  `genero` enum('MASCULINO','FEMENINO') COLLATE utf8mb4_spanish2_ci NOT NULL,
-  `grado_id` int(11) NOT NULL,
-  `especialidad_id` int(11) DEFAULT NULL,
-  `cargo` varchar(150) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
-  `comisionamiento` varchar(200) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
-  `telefono` varchar(20) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
-  `region_id` int(11) DEFAULT '1',
-  `lugar_guardia_id` int(11) DEFAULT NULL,
-  `observaciones` varchar(500) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `id` int NOT NULL,
+  `legajo` int NOT NULL,
+  `nombre` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `apellido` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `cin` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `genero` enum('MASCULINO','FEMENINO') CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `grado_id` int NOT NULL,
+  `especialidad_id` int DEFAULT NULL,
+  `cargo` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `comisionamiento` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `telefono` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `region_id` int DEFAULT '1',
+  `lugar_guardia_id` int DEFAULT NULL,
+  `observaciones` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
   `activo` tinyint(1) DEFAULT '1',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -968,9 +679,9 @@ CREATE TABLE `policias` (
 --
 
 INSERT INTO `policias` (`id`, `legajo`, `nombre`, `apellido`, `cin`, `genero`, `grado_id`, `especialidad_id`, `cargo`, `comisionamiento`, `telefono`, `region_id`, `lugar_guardia_id`, `observaciones`, `activo`, `created_at`, `updated_at`) VALUES
-(1, 1, 'Julio Alberto', 'Ramirez', '4324324', 'MASCULINO', 1, 1, 'JEFE DE DEPARTAMENTO', '', '09877673636', 1, 5, '0', 1, '2025-06-25 17:29:51', '2025-06-25 18:23:16'),
+(1, 1, 'Julio Alberto', 'Ramirez', '4324324', 'MASCULINO', 1, 1, 'JEFE DE DEPARTAMENTO', '', '0987767363', 1, 5, '0', 1, '2025-06-25 17:29:51', '2025-06-28 18:50:46'),
 (2, 2, 'Carlos', 'González', '1234567', 'MASCULINO', 2, 1, 'Jefe de División', 'Comisionado en Central', '0981122334', 1, 1, '0', 1, '2025-06-25 18:32:48', '2025-06-25 18:41:59'),
-(3, 3, 'Ana', 'Martínez', '2345678', 'FEMENINO', 3, 2, 'Subjefa de Departamento', NULL, '0982233445', 1, 2, 'Especialista en logística', 1, '2025-06-25 18:32:48', '2025-06-25 18:32:48'),
+(3, 3, 'Ana', 'Martínez', '2345678', 'FEMENINO', 3, 2, 'Subjefa de Departamento', NULL, '0982233445', 1, 2, 'Especialista en logística', 1, '2025-06-25 18:32:48', '2025-06-28 17:01:38'),
 (4, 4, 'Luis', 'Rodríguez', '3456789', 'MASCULINO', 4, NULL, 'Oficial Inspector', NULL, '0983344556', 1, 3, NULL, 1, '2025-06-25 18:32:48', '2025-06-25 18:32:48'),
 (5, 5, 'María', 'Pérez', '4567890', 'FEMENINO', 5, NULL, 'Oficial Primero', NULL, '0984455667', 1, 4, 'A cargo de grupo Domingo', 1, '2025-06-25 18:32:48', '2025-06-25 18:32:48'),
 (6, 6, 'Juan', 'Gómez', '5678901', 'MASCULINO', 6, NULL, 'Oficial Segundo', NULL, '0985566778', 1, 5, 'Conductor principal', 1, '2025-06-25 18:32:48', '2025-06-25 18:32:48'),
@@ -1067,8 +778,9 @@ INSERT INTO `policias` (`id`, `legajo`, `nombre`, `apellido`, `cin`, `genero`, `
 (97, 97, 'Katia', 'Zúñiga', '7778797', 'FEMENINO', 13, NULL, 'Suboficial Segundo', NULL, '0987778798', 1, 5, NULL, 1, '2025-06-25 18:32:48', '2025-06-25 18:32:48'),
 (98, 98, 'Lautaro', 'Yáñez', '7878808', 'MASCULINO', 14, NULL, 'Suboficial Ayudante', NULL, '0987878809', 1, 6, NULL, 1, '2025-06-25 18:32:48', '2025-06-25 18:32:48'),
 (99, 99, 'Mireya', 'Xicará', '7980818', 'FEMENINO', 15, NULL, 'Funcionaria', NULL, '0987980819', 1, 7, NULL, 1, '2025-06-25 18:32:48', '2025-06-25 18:32:48'),
-(100, 100, 'Norberto', 'Wagner', '8081828', 'MASCULINO', 12, NULL, 'Suboficial Primero', NULL, '0988081829', 1, 1, NULL, 1, '2025-06-25 18:32:48', '2025-06-25 18:32:48'),
-(101, 101, 'Ofelia', 'Valdés', '8182838', 'FEMENINO', 13, NULL, 'Suboficial Segundo', NULL, '0988182839', 1, 2, NULL, 1, '2025-06-25 18:32:48', '2025-06-25 18:32:48');
+(100, 101, 'Norberto', 'Wagner', '8081828', 'MASCULINO', 12, NULL, 'Suboficial Primero', NULL, '0988081829', 1, 1, NULL, 1, '2025-06-25 18:32:48', '2025-06-28 15:48:19'),
+(101, 100, 'Ofelia', 'Valdés', '8182838', 'FEMENINO', 13, NULL, 'Suboficial Segundo', NULL, '0988182839', 1, 2, NULL, 1, '2025-06-25 18:32:48', '2025-06-28 15:48:19'),
+(102, 102, 'Lionel', 'Messi', '2345333', 'MASCULINO', 1, 1, 'JEFE DE DEPARTAMENTO', '', '09725463554', 1, 2, '', 0, '2025-06-28 18:01:25', '2025-06-28 18:53:21');
 
 --
 -- Disparadores `policias`
@@ -1092,9 +804,9 @@ DELIMITER ;
 --
 
 CREATE TABLE `regiones` (
-  `id` int(11) NOT NULL,
-  `nombre` varchar(50) COLLATE utf8mb4_spanish2_ci NOT NULL,
-  `descripcion` text COLLATE utf8mb4_spanish2_ci,
+  `id` int NOT NULL,
+  `nombre` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `descripcion` text CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci,
   `activo` tinyint(1) DEFAULT '1',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -1115,13 +827,13 @@ INSERT INTO `regiones` (`id`, `nombre`, `descripcion`, `activo`, `created_at`, `
 --
 
 CREATE TABLE `servicios` (
-  `id` int(11) NOT NULL,
-  `nombre` varchar(200) COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `id` int NOT NULL,
+  `nombre` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
   `fecha_servicio` date NOT NULL,
-  `descripcion` text COLLATE utf8mb4_spanish2_ci,
-  `orden_del_dia` varchar(50) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
-  `jefe_servicio_id` int(11) DEFAULT NULL,
-  `estado` enum('PROGRAMADO','EN_CURSO','COMPLETADO','CANCELADO') COLLATE utf8mb4_spanish2_ci DEFAULT 'PROGRAMADO',
+  `descripcion` text CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci,
+  `orden_del_dia` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `jefe_servicio_id` int DEFAULT NULL,
+  `estado` enum('PROGRAMADO','EN_CURSO','COMPLETADO','CANCELADO') CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT 'PROGRAMADO',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish2_ci;
@@ -1133,9 +845,9 @@ CREATE TABLE `servicios` (
 --
 
 CREATE TABLE `tipos_ausencias` (
-  `id` int(11) NOT NULL,
-  `nombre` varchar(50) COLLATE utf8mb4_spanish2_ci NOT NULL,
-  `descripcion` text COLLATE utf8mb4_spanish2_ci,
+  `id` int NOT NULL,
+  `nombre` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `descripcion` text CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci,
   `requiere_justificacion` tinyint(1) DEFAULT '0',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish2_ci;
@@ -1159,12 +871,12 @@ INSERT INTO `tipos_ausencias` (`id`, `nombre`, `descripcion`, `requiere_justific
 --
 
 CREATE TABLE `usuarios` (
-  `id` int(11) NOT NULL,
-  `nombre_usuario` varchar(50) COLLATE utf8mb4_spanish2_ci NOT NULL,
-  `contraseña` varchar(255) COLLATE utf8mb4_spanish2_ci NOT NULL,
-  `nombre_completo` varchar(100) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
-  `email` varchar(100) COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
-  `rol` enum('ADMIN') COLLATE utf8mb4_spanish2_ci DEFAULT 'ADMIN',
+  `id` int NOT NULL,
+  `nombre_usuario` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `contraseña` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `nombre_completo` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `email` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT NULL,
+  `rol` enum('ADMIN') CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci DEFAULT 'ADMIN',
   `activo` tinyint(1) DEFAULT '1',
   `creado_en` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `actualizado_en` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -1184,21 +896,21 @@ INSERT INTO `usuarios` (`id`, `nombre_usuario`, `contraseña`, `nombre_completo`
 -- (Véase abajo para la vista actual)
 --
 CREATE TABLE `vista_disponibilidad_policias` (
-`id` int(11)
-,`legajo` int(11)
-,`nombre` varchar(100)
-,`apellido` varchar(100)
+`apellido` varchar(100)
+,`cargo` varchar(150)
 ,`cin` varchar(20)
+,`disponibilidad` varchar(13)
+,`especialidad` varchar(150)
 ,`genero` enum('MASCULINO','FEMENINO')
 ,`grado` varchar(100)
-,`nivel_jerarquia` int(11)
-,`especialidad` varchar(150)
-,`cargo` varchar(150)
-,`telefono` varchar(20)
+,`id` int
+,`legajo` int
 ,`lugar_guardia` varchar(100)
-,`region` varchar(50)
-,`disponibilidad` varchar(13)
+,`nivel_jerarquia` int
+,`nombre` varchar(100)
 ,`observaciones` varchar(500)
+,`region` varchar(50)
+,`telefono` varchar(20)
 );
 
 -- --------------------------------------------------------
@@ -1208,18 +920,18 @@ CREATE TABLE `vista_disponibilidad_policias` (
 -- (Véase abajo para la vista actual)
 --
 CREATE TABLE `vista_lista_guardias` (
-`posicion` int(11)
-,`policia_id` int(11)
-,`legajo` int(11)
-,`nombre` varchar(100)
-,`apellido` varchar(100)
+`apellido` varchar(100)
 ,`cin` varchar(20)
+,`disponibilidad` varchar(13)
 ,`genero` enum('MASCULINO','FEMENINO')
 ,`grado` varchar(100)
-,`nivel_jerarquia` int(11)
+,`legajo` int
 ,`lugar_guardia` varchar(100)
+,`nivel_jerarquia` int
+,`nombre` varchar(100)
+,`policia_id` int
+,`posicion` int
 ,`ultima_guardia_fecha` date
-,`disponibilidad` varchar(13)
 );
 
 --
@@ -1350,79 +1062,79 @@ ALTER TABLE `usuarios`
 -- AUTO_INCREMENT de la tabla `asignaciones_servicios`
 --
 ALTER TABLE `asignaciones_servicios`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT de la tabla `ausencias`
 --
 ALTER TABLE `ausencias`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT de la tabla `especialidades`
 --
 ALTER TABLE `especialidades`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT de la tabla `grados`
 --
 ALTER TABLE `grados`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT de la tabla `guardias_realizadas`
 --
 ALTER TABLE `guardias_realizadas`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=245;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1332;
 
 --
 -- AUTO_INCREMENT de la tabla `guardias_semanales`
 --
 ALTER TABLE `guardias_semanales`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=34;
 
 --
 -- AUTO_INCREMENT de la tabla `lista_guardias`
 --
 ALTER TABLE `lista_guardias`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=506;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2022;
 
 --
 -- AUTO_INCREMENT de la tabla `lugares_guardias`
 --
 ALTER TABLE `lugares_guardias`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT de la tabla `policias`
 --
 ALTER TABLE `policias`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=102;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=104;
 
 --
 -- AUTO_INCREMENT de la tabla `regiones`
 --
 ALTER TABLE `regiones`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT de la tabla `servicios`
 --
 ALTER TABLE `servicios`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT de la tabla `tipos_ausencias`
 --
 ALTER TABLE `tipos_ausencias`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT de la tabla `usuarios`
 --
 ALTER TABLE `usuarios`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 -- --------------------------------------------------------
 
@@ -1431,7 +1143,7 @@ ALTER TABLE `usuarios`
 --
 DROP TABLE IF EXISTS `vista_disponibilidad_policias`;
 
-CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `vista_disponibilidad_policias`  AS SELECT `p`.`id` AS `id`, `p`.`legajo` AS `legajo`, `p`.`nombre` AS `nombre`, `p`.`apellido` AS `apellido`, `p`.`cin` AS `cin`, `p`.`genero` AS `genero`, `g`.`nombre` AS `grado`, `g`.`nivel_jerarquia` AS `nivel_jerarquia`, `e`.`nombre` AS `especialidad`, `p`.`cargo` AS `cargo`, `p`.`telefono` AS `telefono`, `lg`.`nombre` AS `lugar_guardia`, `r`.`nombre` AS `region`, (case when exists(select 1 from `ausencias` `a` where ((`a`.`policia_id` = `p`.`id`) and (`a`.`estado` = 'APROBADA') and (curdate() between `a`.`fecha_inicio` and coalesce(`a`.`fecha_fin`,curdate())))) then 'NO DISPONIBLE' else 'DISPONIBLE' end) AS `disponibilidad`, `p`.`observaciones` AS `observaciones` FROM ((((`policias` `p` left join `grados` `g` on((`p`.`grado_id` = `g`.`id`))) left join `especialidades` `e` on((`p`.`especialidad_id` = `e`.`id`))) left join `lugares_guardias` `lg` on((`p`.`lugar_guardia_id` = `lg`.`id`))) left join `regiones` `r` on((`p`.`region_id` = `r`.`id`))) WHERE (`p`.`activo` = TRUE) ;
+CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `vista_disponibilidad_policias`  AS SELECT `p`.`id` AS `id`, `p`.`legajo` AS `legajo`, `p`.`nombre` AS `nombre`, `p`.`apellido` AS `apellido`, `p`.`cin` AS `cin`, `p`.`genero` AS `genero`, `g`.`nombre` AS `grado`, `g`.`nivel_jerarquia` AS `nivel_jerarquia`, `e`.`nombre` AS `especialidad`, `p`.`cargo` AS `cargo`, `p`.`telefono` AS `telefono`, `lg`.`nombre` AS `lugar_guardia`, `r`.`nombre` AS `region`, (case when exists(select 1 from `ausencias` `a` where ((`a`.`policia_id` = `p`.`id`) and (`a`.`estado` = 'APROBADA') and (curdate() between `a`.`fecha_inicio` and coalesce(`a`.`fecha_fin`,curdate())))) then 'NO DISPONIBLE' else 'DISPONIBLE' end) AS `disponibilidad`, `p`.`observaciones` AS `observaciones` FROM ((((`policias` `p` left join `grados` `g` on((`p`.`grado_id` = `g`.`id`))) left join `especialidades` `e` on((`p`.`especialidad_id` = `e`.`id`))) left join `lugares_guardias` `lg` on((`p`.`lugar_guardia_id` = `lg`.`id`))) left join `regiones` `r` on((`p`.`region_id` = `r`.`id`))) WHERE (`p`.`activo` = true) ;
 
 -- --------------------------------------------------------
 
@@ -1440,7 +1152,7 @@ CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW 
 --
 DROP TABLE IF EXISTS `vista_lista_guardias`;
 
-CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `vista_lista_guardias`  AS SELECT `lg`.`posicion` AS `posicion`, `p`.`id` AS `policia_id`, `p`.`legajo` AS `legajo`, `p`.`nombre` AS `nombre`, `p`.`apellido` AS `apellido`, `p`.`cin` AS `cin`, `p`.`genero` AS `genero`, `g`.`nombre` AS `grado`, `g`.`nivel_jerarquia` AS `nivel_jerarquia`, `lguar`.`nombre` AS `lugar_guardia`, `lg`.`ultima_guardia_fecha` AS `ultima_guardia_fecha`, (case when exists(select 1 from `ausencias` `a` where ((`a`.`policia_id` = `p`.`id`) and (`a`.`estado` = 'APROBADA') and (curdate() between `a`.`fecha_inicio` and coalesce(`a`.`fecha_fin`,curdate())))) then 'NO DISPONIBLE' else 'DISPONIBLE' end) AS `disponibilidad` FROM (((`lista_guardias` `lg` join `policias` `p` on((`lg`.`policia_id` = `p`.`id`))) join `grados` `g` on((`p`.`grado_id` = `g`.`id`))) left join `lugares_guardias` `lguar` on((`p`.`lugar_guardia_id` = `lguar`.`id`))) WHERE (`p`.`activo` = TRUE) ORDER BY `lg`.`posicion` ASC ;
+CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `vista_lista_guardias`  AS SELECT `lg`.`posicion` AS `posicion`, `p`.`id` AS `policia_id`, `p`.`legajo` AS `legajo`, `p`.`nombre` AS `nombre`, `p`.`apellido` AS `apellido`, `p`.`cin` AS `cin`, `p`.`genero` AS `genero`, `g`.`nombre` AS `grado`, `g`.`nivel_jerarquia` AS `nivel_jerarquia`, `lguar`.`nombre` AS `lugar_guardia`, `lg`.`ultima_guardia_fecha` AS `ultima_guardia_fecha`, (case when exists(select 1 from `ausencias` `a` where ((`a`.`policia_id` = `p`.`id`) and (`a`.`estado` = 'APROBADA') and (curdate() between `a`.`fecha_inicio` and coalesce(`a`.`fecha_fin`,curdate())))) then 'NO DISPONIBLE' else 'DISPONIBLE' end) AS `disponibilidad` FROM (((`lista_guardias` `lg` join `policias` `p` on((`lg`.`policia_id` = `p`.`id`))) join `grados` `g` on((`p`.`grado_id` = `g`.`id`))) left join `lugares_guardias` `lguar` on((`p`.`lugar_guardia_id` = `lguar`.`id`))) WHERE (`p`.`activo` = true) ORDER BY `lg`.`posicion` ASC ;
 
 --
 -- Restricciones para tablas volcadas
