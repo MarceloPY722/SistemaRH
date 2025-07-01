@@ -283,7 +283,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                         <div class="mb-3">
                                             <label for="comisionamiento" class="form-label">Comisionamiento</label>
                                             <input type="text" class="form-control" id="comisionamiento" name="comisionamiento" 
-                                                   value="<?php echo htmlspecialchars($policia['comisionamiento']); ?>">
+                                                   value="<?php echo htmlspecialchars($policia['comisionamiento'] ?? ''); ?>">
                                         </div>
                                     </div>
                                 </div>

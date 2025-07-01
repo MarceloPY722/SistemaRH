@@ -19,20 +19,6 @@ $reportes_data = [];
 
 if ($reporte_tipo) {
     switch ($reporte_tipo) {
-        case 'policias_activos':
-            $reportes_data = $conn->query("
-                SELECT p.legajo, p.nombre, p.apellido, p.cin, g.nombre as grado, 
-                       p.comisionamiento, r.nombre as region, lg.nombre as lugar_guardia,
-                       p.telefono, p.created_at as fecha_registro
-                FROM policias p
-                JOIN grados g ON p.grado_id = g.id
-                LEFT JOIN regiones r ON p.region_id = r.id
-                LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
-                WHERE p.activo = 1
-                ORDER BY g.nivel_jerarquia ASC, p.apellido ASC
-            ");
-            break;
-            
         case 'policias_deshabilitados':
             $reportes_data = $conn->query("
                 SELECT p.legajo, p.nombre, p.apellido, p.cin, 
@@ -278,17 +264,6 @@ $dias_semana = [
                     <!-- Selección de Reportes -->
                     <div class="row">
                         <div class="col-md-4 mb-4">
-                            <div class="card report-card" onclick="location.href='?tipo=policias_activos'">
-                                <div class="card-body text-center">
-                                    <i class="fas fa-users fa-3x text-primary mb-3"></i>
-                                    <h5>Policías Activos</h5>
-                                    <p class="text-muted">Lista completa de policías en servicio activo</p>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- Eliminar la tarjeta de policías activos de las líneas 280-286 -->
-                        <!-- Mantener solo la tarjeta de policías deshabilitados -->
-                        <div class="col-md-4 mb-4">
                             <div class="card report-card" onclick="location.href='?tipo=policias_deshabilitados'">
                                 <div class="card-body text-center">
                                     <i class="fas fa-user-slash fa-3x text-muted mb-3"></i>
@@ -359,7 +334,6 @@ $dias_semana = [
                             <h5 class="mb-0">
                                 <?php 
                                 $titulos = [
-                                    // Eliminar 'policias_activos' => 'Reporte de Policías Activos',
                                     'policias_deshabilitados' => 'Reporte de Policías Deshabilitados',
                                     'servicios_periodo' => 'Reporte de Servicios por Período',
                                     'ausencias_periodo' => 'Reporte de Ausencias por Período',
@@ -441,10 +415,8 @@ $dias_semana = [
                                     <thead>
                                         <tr>
                                             <?php 
-                                            // Corregir la sección de encabezados (líneas 441-475)
                                             // Generar encabezados según el tipo de reporte
                                             switch ($reporte_tipo) {
-                                                // Eliminar case 'policias_activos'
                                                 case 'policias_deshabilitados':
                                                     echo '<th>Legajo</th>';
                                                     echo '<th>Nombre</th>';
@@ -482,7 +454,8 @@ $dias_semana = [
                                             <?php 
                                             // Mostrar datos según el tipo de reporte
                                             switch ($reporte_tipo) {
-                                                case 'policias_activos':
+                                                case 'policias_deshabilitados':
+                                                    echo '<td>' . htmlspecialchars($row['legajo']) . '</td>';
                                                     echo '<td>' . htmlspecialchars($row['nombre']) . '</td>';
                                                     echo '<td>' . htmlspecialchars($row['apellido']) . '</td>';
                                                     echo '<td>' . htmlspecialchars($row['cin']) . '</td>';
@@ -490,6 +463,8 @@ $dias_semana = [
                                                     echo '<td>' . htmlspecialchars($row['comisionamiento']) . '</td>';
                                                     echo '<td>' . htmlspecialchars($row['region']) . '</td>';
                                                     echo '<td>' . htmlspecialchars($row['lugar_guardia'] ?? 'No asignado') . '</td>';
+                                                    echo '<td>' . htmlspecialchars($row['telefono']) . '</td>';
+                                                    echo '<td>' . date('d/m/Y', strtotime($row['fecha_deshabilitacion'])) . '</td>';
                                                     break;
                                                 case 'servicios_periodo':
                                                     echo '<td>' . htmlspecialchars($row['nombre']) . '</td>';

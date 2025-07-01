@@ -14,6 +14,57 @@ $total_policias = $conn->query("SELECT COUNT(*) as total FROM policias WHERE act
 $total_servicios = $conn->query("SELECT COUNT(*) as total FROM servicios WHERE estado = 'PROGRAMADO'")->fetch_assoc()['total'];
 $total_ausencias = $conn->query("SELECT COUNT(*) as total FROM ausencias WHERE estado = 'PENDIENTE'")->fetch_assoc()['total'];
 $total_guardias = $conn->query("SELECT COUNT(*) as total FROM lista_guardias")->fetch_assoc()['total'];
+
+// Obtener ausencias activas (APROBADA y PENDIENTE)
+$ausencias_activas = $conn->query("
+    SELECT a.id, a.fecha_inicio, a.fecha_fin, a.estado, a.descripcion,
+           p.nombre, p.apellido, p.cin, g.nombre as grado, ta.nombre as tipo_ausencia
+    FROM ausencias a
+    JOIN policias p ON a.policia_id = p.id
+    JOIN grados g ON p.grado_id = g.id
+    JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id
+    WHERE a.estado IN ('APROBADA', 'PENDIENTE')
+    ORDER BY a.fecha_inicio ASC
+    LIMIT 10
+");
+
+// Procesar completar ausencias
+if ($_POST && isset($_POST['action']) && $_POST['action'] == 'completar') {
+    $ausencia_id = $_POST['ausencia_id'];
+    
+    // Verificar que la ausencia esté en estado APROBADA
+    $stmt_verificar = $conn->prepare("SELECT estado FROM ausencias WHERE id = ?");
+    $stmt_verificar->bind_param("i", $ausencia_id);
+    $stmt_verificar->execute();
+    $resultado = $stmt_verificar->get_result()->fetch_assoc();
+    
+    if ($resultado && $resultado['estado'] == 'APROBADA') {
+        $sql = "UPDATE ausencias SET estado = 'COMPLETADA' WHERE id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $ausencia_id);
+        
+        if ($stmt->execute()) {
+            // Reinicializar la cola FIFO para actualizar disponibilidad
+            try {
+                $stmt_fifo = $conn->prepare("CALL InicializarColaFIFO()");
+                $stmt_fifo->execute();
+                $stmt_fifo->close();
+                $mensaje = "<div class='alert alert-success'>Ausencia completada exitosamente. La disponibilidad del policía ha sido actualizada.</div>";
+            } catch (Exception $e) {
+                $mensaje = "<div class='alert alert-warning'>Ausencia completada, pero hubo un error al actualizar la cola de guardias: " . $e->getMessage() . "</div>";
+            }
+        } else {
+            $mensaje = "<div class='alert alert-danger'>Error al completar ausencia: " . $conn->error . "</div>";
+        }
+    } else {
+        $mensaje = "<div class='alert alert-danger'>Solo se pueden completar ausencias que estén en estado APROBADA</div>";
+    }
+    $stmt_verificar->close();
+    
+    // Recargar la página para mostrar los cambios
+    header("Location: " . $_SERVER['PHP_SELF']);
+    exit();
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -77,6 +128,8 @@ $total_guardias = $conn->query("SELECT COUNT(*) as total FROM lista_guardias")->
                         <i class="fas fa-tachometer-alt"></i> Panel de Control
                     </h1>
 
+                    <?php if (isset($mensaje)) echo $mensaje; ?>
+
                     <!-- Estadísticas -->
                     <div class="row mb-4">
                         <div class="col-md-3 mb-3">
@@ -126,17 +179,11 @@ $total_guardias = $conn->query("SELECT COUNT(*) as total FROM lista_guardias")->
                                 </div>
                                 <div class="card-body">
                                     <div class="d-grid gap-2">
-                                        <a href="policias/index.php" class="btn btn-outline-primary">
-                                            <i class="fas fa-user-plus"></i> Registrar Nuevo Policía
-                                        </a>
                                         <a href="servicios/index.php" class="btn btn-outline-success">
                                             <i class="fas fa-calendar-plus"></i> Programar Servicio
                                         </a>
-                                        <a href="ausencias/index.php" class="btn btn-outline-warning">
+                                        <a href="ausencias/agregar_ausencia.php" class="btn btn-outline-warning">
                                             <i class="fas fa-user-times"></i> Registrar Ausencia
-                                        </a>
-                                        <a href="guardias/index.php" class="btn btn-outline-info">
-                                            <i class="fas fa-sync-alt"></i> Reorganizar Lista de Guardias
                                         </a>
                                     </div>
                                 </div>
@@ -145,18 +192,73 @@ $total_guardias = $conn->query("SELECT COUNT(*) as total FROM lista_guardias")->
                         
                         <div class="col-md-6 mb-4">
                             <div class="card">
-                                <div class="card-header bg-info text-white">
-                                    <h5><i class="fas fa-bell"></i> Notificaciones Recientes</h5>
+                                <div class="card-header bg-warning text-white">
+                                    <h5><i class="fas fa-user-clock"></i> Ausencias Activas</h5>
                                 </div>
-                                <div class="card-body">
-                                    <div class="alert alert-warning">
-                                        <i class="fas fa-exclamation-triangle"></i>
-                                        Hay <?php echo $total_ausencias; ?> ausencias pendientes de aprobación
+                                <div class="card-body p-0">
+                                    <?php if ($ausencias_activas->num_rows > 0): ?>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm mb-0">
+                                            <tbody>
+                                                <?php while ($ausencia = $ausencias_activas->fetch_assoc()): ?>
+                                                <tr>
+                                                    <td class="py-2">
+                                                        <div class="d-flex justify-content-between align-items-center">
+                                                            <div>
+                                                                <strong><?php echo $ausencia['grado'] . ' ' . $ausencia['apellido'] . ', ' . $ausencia['nombre']; ?></strong>
+                                                                <br>
+                                                                <small class="text-muted">
+                                                                    <i class="fas fa-calendar"></i> 
+                                                                    <?php echo date('d/m/Y', strtotime($ausencia['fecha_inicio'])); ?>
+                                                                    <?php if ($ausencia['fecha_fin']): ?>
+                                                                        - <?php echo date('d/m/Y', strtotime($ausencia['fecha_fin'])); ?>
+                                                                    <?php else: ?>
+                                                                        - Indefinida
+                                                                    <?php endif; ?>
+                                                                </small>
+                                                                <br>
+                                                                <span class="badge bg-<?php 
+                                                                    echo $ausencia['estado'] == 'APROBADA' ? 'success' : 
+                                                                        ($ausencia['estado'] == 'PENDIENTE' ? 'warning' : 'info'); 
+                                                                ?> badge-sm">
+                                                                    <?php echo $ausencia['estado']; ?>
+                                                                </span>
+                                                                <small class="text-muted ms-1"><?php echo $ausencia['tipo_ausencia']; ?></small>
+                                                            </div>
+                                                            <div class="btn-group-vertical" role="group">
+                                                                <?php if ($ausencia['estado'] == 'APROBADA'): ?>
+                                                                <form method="POST" style="display: inline;" class="mb-1">
+                                                                    <input type="hidden" name="action" value="completar">
+                                                                    <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
+                                                                    <button type="submit" class="btn btn-sm btn-success" 
+                                                                            onclick="return confirm('¿Marcar como completada?')" 
+                                                                            title="Completar ausencia">
+                                                                        <i class="fas fa-check"></i>
+                                                                    </button>
+                                                                </form>
+                                                                <?php endif; ?>
+                                                                <a href="ausencias/index.php" class="btn btn-sm btn-outline-primary" title="Ver/Editar">
+                                                                    <i class="fas fa-edit"></i>
+                                                                </a>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                <?php endwhile; ?>
+                                            </tbody>
+                                        </table>
                                     </div>
-                                    <div class="alert alert-info">
-                                        <i class="fas fa-info-circle"></i>
-                                        Sistema funcionando correctamente
+                                    <div class="card-footer text-center py-2">
+                                        <a href="ausencias/index.php" class="btn btn-sm btn-outline-warning">
+                                            <i class="fas fa-list"></i> Ver todas las ausencias
+                                        </a>
                                     </div>
+                                    <?php else: ?>
+                                    <div class="text-center py-4 text-muted">
+                                        <i class="fas fa-check-circle fa-2x mb-2"></i>
+                                        <p class="mb-0">No hay ausencias activas</p>
+                                    </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>

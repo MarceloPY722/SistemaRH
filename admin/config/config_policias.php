@@ -18,182 +18,269 @@ require_once '../../cnx/db_connect.php';
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        .config-container {
-            padding: 40px 0;
-        }
-        
-        .config-header {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 15px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            text-align: center;
-        }
-        
-        .config-header h1 {
-            color: #2c3e50;
-            font-weight: 700;
-            margin-bottom: 10px;
-        }
-        
-        .config-header p {
-            color: #7f8c8d;
-            font-size: 1.1em;
-            margin: 0;
-        }
-        
-        .config-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 25px;
-            margin-top: 20px;
-        }
-        
-        .config-card {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 15px;
-            padding: 30px;
-            text-align: center;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-            border: 2px solid transparent;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .config-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-            transition: left 0.5s;
-        }
-        
-        .config-card:hover::before {
-            left: 100%;
-        }
-        
-        .config-card:hover {
-            transform: translateY(-10px);
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
-            border-color: #3498db;
-        }
-        
-        .config-icon {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 20px;
-            background: linear-gradient(135deg, #3498db, #2980b9);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2.5em;
-            color: white;
-            transition: all 0.3s ease;
-        }
-        
-        .config-card:hover .config-icon {
-            transform: scale(1.1) rotate(5deg);
-        }
-        
-        .config-title {
-            font-size: 1.4em;
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 15px;
-        }
-        
-        .config-description {
-            color: #7f8c8d;
-            margin-bottom: 25px;
-            line-height: 1.6;
-        }
-        
-        .config-btn {
-            background: linear-gradient(135deg, #3498db, #2980b9);
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 25px;
-            font-weight: 600;
-            text-decoration: none;
-            display: inline-block;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .config-btn:hover {
-            background: linear-gradient(135deg, #2980b9, #1f5f8b);
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
-        }
-        
-        .back-btn {
-            background: linear-gradient(135deg, #95a5a6, #7f8c8d);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 20px;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.3s ease;
-            margin-bottom: 20px;
-        }
-        
-        .back-btn:hover {
-            background: linear-gradient(135deg, #7f8c8d, #6c7b7d);
-            color: white;
-            transform: translateY(-2px);
-        }
-        
-        .stats-row {
-            margin-top: 30px;
-        }
-        
-        .stat-card {
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 10px;
-            padding: 20px;
-            text-align: center;
-            box-shadow: 0 3px 15px rgba(0, 0, 0, 0.1);
-        }
-        
-        .stat-number {
-            font-size: 2em;
-            font-weight: 700;
-            color: #3498db;
-        }
-        
-        .stat-label {
-            color: #7f8c8d;
-            font-size: 0.9em;
-            margin-top: 5px;
-        }
-        
-        @media (max-width: 768px) {
-            .config-grid {
-                grid-template-columns: 1fr;
+      
+            :root {
+                --primary-color: #104c75;
+                --secondary-color: #0d3d5c;
+                --accent-color: #1a5a8a;
+                --light-bg: #f8f9fa;
+                --text-primary: #2c3e50;
+                --text-secondary: #6c757d;
+            }
+            
+            body {
+                background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+                min-height: 100vh;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                height: 100vh;
+                overflow: hidden;
+            }
+            
+            .main-content {
+                height: 100vh;
+                overflow-y: auto;
+                padding: 20px;
             }
             
             .config-container {
-                padding: 20px 15px;
+                max-height: calc(100vh - 40px);
+                overflow-y: auto;
             }
-        }
+            
+            .config-header {
+                background: rgba(255, 255, 255, 0.95);
+                border-radius: 12px;
+                padding: 20px;
+                margin-bottom: 20px;
+                box-shadow: 0 4px 15px rgba(16, 76, 117, 0.1);
+                text-align: center;
+                border: 1px solid rgba(16, 76, 117, 0.1);
+            }
+            
+            .config-header h1 {
+                color: var(--primary-color);
+                font-weight: 700;
+                margin-bottom: 8px;
+                font-size: 1.8rem;
+            }
+            
+            .config-header p {
+                color: var(--text-secondary);
+                font-size: 1rem;
+                margin: 0;
+            }
+            
+            .config-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+                margin-bottom: 20px;
+            }
+            
+            .config-card {
+                background: rgba(255, 255, 255, 0.95);
+                border-radius: 12px;
+                padding: 20px;
+                text-align: center;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                box-shadow: 0 3px 12px rgba(16, 76, 117, 0.1);
+                border: 1px solid rgba(16, 76, 117, 0.1);
+                position: relative;
+                overflow: hidden;
+                min-height: 180px;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+            }
+            
+            .config-card::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: -100%;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(90deg, transparent, rgba(16, 76, 117, 0.1), transparent);
+                transition: left 0.5s;
+            }
+            
+            .config-card:hover::before {
+                left: 100%;
+            }
+            
+            .config-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 8px 25px rgba(16, 76, 117, 0.2);
+                border-color: var(--primary-color);
+            }
+            
+            .config-icon {
+                width: 50px;
+                height: 50px;
+                margin: 0 auto 15px;
+                background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.5em;
+                color: white;
+                transition: all 0.3s ease;
+            }
+            
+            .config-card:hover .config-icon {
+                transform: scale(1.1) rotate(5deg);
+                background: linear-gradient(135deg, var(--accent-color), var(--primary-color));
+            }
+            
+            .config-title {
+                font-size: 1.1em;
+                font-weight: 600;
+                color: var(--primary-color);
+                margin-bottom: 10px;
+            }
+            
+            .config-description {
+                color: var(--text-secondary);
+                margin-bottom: 15px;
+                line-height: 1.4;
+                font-size: 0.85rem;
+                flex-grow: 1;
+            }
+            
+            .config-btn {
+                background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+                color: white;
+                border: none;
+                padding: 8px 20px;
+                border-radius: 20px;
+                font-weight: 600;
+                text-decoration: none;
+                display: inline-block;
+                transition: all 0.3s ease;
+                position: relative;
+                overflow: hidden;
+                font-size: 0.85rem;
+            }
+            
+            .config-btn:hover {
+                background: linear-gradient(135deg, var(--secondary-color), var(--accent-color));
+                color: white;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(16, 76, 117, 0.3);
+            }
+            
+            .back-btn {
+                background: linear-gradient(135deg, var(--text-secondary), #5a6268);
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 20px;
+                text-decoration: none;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                transition: all 0.3s ease;
+                margin-bottom: 15px;
+                font-size: 0.9rem;
+            }
+            
+            .back-btn:hover {
+                background: linear-gradient(135deg, #5a6268, var(--primary-color));
+                color: white;
+                transform: translateY(-2px);
+            }
+            
+            .stats-row {
+                margin-top: 15px;
+            }
+            
+            .stat-card {
+                background: rgba(255, 255, 255, 0.95);
+                border-radius: 10px;
+                padding: 15px;
+                text-align: center;
+                box-shadow: 0 2px 10px rgba(16, 76, 117, 0.1);
+                border: 1px solid rgba(16, 76, 117, 0.1);
+                transition: all 0.3s ease;
+            }
+            
+            .stat-card:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 4px 15px rgba(16, 76, 117, 0.15);
+            }
+            
+            .stat-number {
+                font-size: 1.8em;
+                font-weight: 700;
+                color: var(--primary-color);
+                background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+            
+            .stat-label {
+                color: var(--text-secondary);
+                font-size: 0.85em;
+                margin-top: 5px;
+                font-weight: 500;
+            }
+            
+            /* Scrollbar personalizada */
+            .main-content::-webkit-scrollbar {
+                width: 6px;
+            }
+            
+            .main-content::-webkit-scrollbar-track {
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 3px;
+            }
+            
+            .main-content::-webkit-scrollbar-thumb {
+                background: rgba(16, 76, 117, 0.3);
+                border-radius: 3px;
+            }
+            
+            .main-content::-webkit-scrollbar-thumb:hover {
+                background: rgba(16, 76, 117, 0.5);
+            }
+            
+            @media (max-width: 768px) {
+                .config-grid {
+                    grid-template-columns: 1fr;
+                }
+                
+                .main-content {
+                    padding: 15px;
+                }
+                
+                .config-card {
+                    min-height: 160px;
+                    padding: 15px;
+                }
+                
+                .config-icon {
+                    width: 45px;
+                    height: 45px;
+                    font-size: 1.3em;
+                }
+            }
+            
+            @media (max-width: 576px) {
+                .stats-row .col-md-3 {
+                    margin-bottom: 10px;
+                }
+                
+                .stat-card {
+                    padding: 12px;
+                }
+                
+                .stat-number {
+                    font-size: 1.5em;
+                }
+            }
+       
     </style>
 </head>
 <body>

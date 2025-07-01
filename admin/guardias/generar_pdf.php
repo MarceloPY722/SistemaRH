@@ -1,8 +1,18 @@
 <?php
 require_once '../../lib/fpdf/fpdf.php';
 
+// Función para convertir UTF-8 a ISO-8859-1 (reemplazo de utf8_decode)
+function convertToLatin1($text) {
+    return mb_convert_encoding($text, 'ISO-8859-1', 'UTF-8');
+}
+
 // Función para generar PDF de guardia semanal
 function generarPDFGuardiaSemanal($guardias) {
+    // Limpiar cualquier salida previa
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    
     $pdf = new FPDF();
     $pdf->AddPage();
     $pdf->SetFont('Arial', 'B', 16);
@@ -25,7 +35,7 @@ function generarPDFGuardiaSemanal($guardias) {
         // Título del lugar
         $pdf->SetFont('Arial', 'B', 14);
         $pdf->SetFillColor(230, 230, 230);
-        $pdf->Cell(0, 10, utf8_decode($lugar), 1, 1, 'C', true);
+        $pdf->Cell(0, 10, convertToLatin1($lugar), 1, 1, 'C', true);
         $pdf->Ln(2);
         
         // Encabezados de tabla
@@ -60,7 +70,7 @@ function generarPDFGuardiaSemanal($guardias) {
             
             $pdf->Cell(25, 6, date('d/m/Y', strtotime($guardia['fecha'])), 1, 0, 'C', $fill);
             $pdf->Cell(20, 6, $dia_texto, 1, 0, 'C', $fill);
-            $pdf->Cell(75, 6, utf8_decode($nombre_completo), 1, 0, 'L', $fill);
+            $pdf->Cell(75, 6, convertToLatin1($nombre_completo), 1, 0, 'L', $fill);
             $pdf->Cell(30, 6, $telefono, 1, 0, 'C', $fill);
             $pdf->Cell(20, 6, $guardia['policia']['region'], 1, 1, 'C', $fill);
         }
@@ -68,20 +78,8 @@ function generarPDFGuardiaSemanal($guardias) {
         $pdf->Ln(8);
     }
     
-    // Leyenda
-    $pdf->Ln(5);
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->Cell(0, 6, 'LEYENDA:', 0, 1, 'L');
-    $pdf->SetFont('Arial', '', 9);
-    $pdf->Cell(0, 5, '• Domingo a Jueves: Personal de region Central (disponibilidad cada 15 dias)', 0, 1, 'L');
-    $pdf->Cell(0, 5, '• Viernes y Sabado: Personal de region Regional (disponibilidad cada 30 dias)', 0, 1, 'L');
-    $pdf->Cell(0, 5, '• El personal asignado pasa automaticamente al final de la lista de rotacion', 0, 1, 'L');
-    
-    // Pie de página
-    $pdf->Ln(10);
-    $pdf->SetFont('Arial', 'I', 8);
-    $pdf->Cell(0, 10, 'Documento generado automaticamente por Sistema RH - ' . date('d/m/Y H:i:s'), 0, 1, 'C');
-    
+   
+  
     // Generar nombre de archivo
     $filename = 'guardia_semanal_' . date('Y-m-d_H-i-s') . '.pdf';
     
@@ -92,6 +90,11 @@ function generarPDFGuardiaSemanal($guardias) {
 
 // Función para generar PDF de guardia individual (mantener compatibilidad)
 function generarPDFGuardia($guardiaData, $tipo = 'actual') {
+    // Limpiar cualquier salida previa
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    
     $pdf = new FPDF();
     $pdf->AddPage();
     $pdf->SetFont('Arial', 'B', 16);
@@ -106,11 +109,11 @@ function generarPDFGuardia($guardiaData, $tipo = 'actual') {
     foreach ($guardiaData as $lugar => $policia) {
         // Lugar de guardia
         $pdf->SetFont('Arial', 'B', 12);
-        $pdf->Cell(0, 8, utf8_decode($lugar), 0, 1, 'L');
+        $pdf->Cell(0, 8, convertToLatin1($lugar), 0, 1, 'L');
         
         // Nombre completo y teléfono con puntos
         $pdf->SetFont('Arial', '', 11);
-        $nombreCompleto = utf8_decode($policia['apellido'] . ', ' . $policia['nombre']);
+        $nombreCompleto = convertToLatin1($policia['apellido'] . ', ' . $policia['nombre']);
         $telefono = $policia['telefono'] ?: 'No registrado';
         
         // Calcular el ancho disponible
@@ -133,16 +136,12 @@ function generarPDFGuardia($guardiaData, $tipo = 'actual') {
         $pdf->Ln(3);
     }
     
-    // Pie de página
-    $pdf->Ln(20);
-    $pdf->SetFont('Arial', 'I', 8);
-    $pdf->Cell(0, 10, 'Documento generado automaticamente por Sistema RH - ' . date('d/m/Y H:i:s'), 0, 1, 'C');
-    
+   
     // Generar nombre de archivo
     $filename = 'guardia_' . $tipo . '_' . date('Y-m-d_H-i-s') . '.pdf';
     
-    // Descargar PDF - REMOVER exit() para permitir redirección
+    // Descargar PDF
     $pdf->Output('D', $filename);
-    // exit(); <- COMENTAR O ELIMINAR ESTA LÍNEA
+    exit();
 }
 ?>

@@ -291,12 +291,6 @@ function obtenerPoliciasPorLugar($conn, $lugar_id, $limite = 7) {
             lg.ultima_guardia_fecha,
             lg.fecha_disponible,
             CASE 
-                WHEN EXISTS (
-                    SELECT 1 FROM ausencias a 
-                    WHERE a.policia_id = p.id 
-                    AND a.estado = 'APROBADA'
-                    AND CURDATE() BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, CURDATE())
-                ) THEN 'AUSENTE'
                 WHEN lg.fecha_disponible IS NOT NULL AND lg.fecha_disponible > CURDATE() THEN 'NO DISPONIBLE'
                 ELSE 'DISPONIBLE'
             END as disponibilidad,
@@ -308,38 +302,19 @@ function obtenerPoliciasPorLugar($conn, $lugar_id, $limite = 7) {
             (SELECT MAX(gr.fecha_inicio)
                 FROM guardias_realizadas gr 
                 WHERE gr.policia_id = p.id
-            ) as ultima_guardia_realizada,
-            (SELECT a.fecha_fin 
-                FROM ausencias a 
-                WHERE a.policia_id = p.id 
-                AND a.estado = 'APROBADA'
-                AND CURDATE() BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, CURDATE())
-                ORDER BY a.fecha_fin DESC
-                LIMIT 1
-            ) as fecha_fin_ausencia,
-            (
-                SELECT a.descripcion 
-                FROM ausencias a 
-                WHERE a.policia_id = p.id 
-                AND a.estado = 'APROBADA'
-                AND CURDATE() BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, CURDATE())
-                ORDER BY a.fecha_fin DESC
-                LIMIT 1
-            ) as motivo_ausencia,
-            (
-                SELECT DATEDIFF(COALESCE(a.fecha_fin, CURDATE()), CURDATE()) + 1
-                FROM ausencias a 
-                WHERE a.policia_id = p.id 
-                AND a.estado = 'APROBADA'
-                AND CURDATE() BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, CURDATE())
-                ORDER BY a.fecha_fin DESC
-                LIMIT 1
-            ) as dias_restantes_ausencia
+            ) as ultima_guardia_realizada
         FROM lista_guardias lg
         JOIN policias p ON lg.policia_id = p.id
         JOIN grados g ON p.grado_id = g.id
         JOIN regiones r ON p.region_id = r.id
-        WHERE p.activo = TRUE AND p.lugar_guardia_id = ?
+        WHERE p.activo = TRUE 
+        AND p.lugar_guardia_id = ?
+        AND NOT EXISTS (
+            SELECT 1 FROM ausencias a 
+            WHERE a.policia_id = p.id 
+            AND a.estado = 'APROBADA'
+            AND CURDATE() BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, CURDATE())
+        )
         ORDER BY lg.posicion ASC
         LIMIT ?
     ");
