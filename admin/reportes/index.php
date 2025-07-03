@@ -263,6 +263,15 @@ $dias_semana = [
                     <?php if (!$reporte_tipo): ?>
                     <!-- Selección de Reportes -->
                     <div class="row">
+                          <div class="col-md-4 mb-4">
+                            <div class="card report-card" onclick="location.href='orden_dia.php'">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-file-word fa-3x text-primary mb-3"></i>
+                                    <h5>Orden del Día</h5>
+                                    <p class="text-muted">Generar orden del día con personal de guardia</p>
+                                </div>
+                            </div>
+                        </div>
                         <div class="col-md-4 mb-4">
                             <div class="card report-card" onclick="location.href='?tipo=policias_deshabilitados'">
                                 <div class="card-body text-center">
@@ -326,6 +335,7 @@ $dias_semana = [
                                 </div>
                             </div>
                         </div>
+                      
                     </div>
                     <?php else: ?>
                     <!-- Mostrar Reporte -->
