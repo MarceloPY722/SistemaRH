@@ -27,22 +27,24 @@ try {
     
     // Obtener policías asignados
     $stmt = $pdo->prepare("
-        SELECT p.id, p.nombre, p.apellido, p.cin, g.nombre as grado, e.nombre as especialidad
+        SELECT p.id, p.nombre, p.apellido, p.cin, tg.nombre as grado, e.nombre as especialidad
         FROM policias p
-        LEFT JOIN grados g ON p.grado_id = g.id
+        LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+        LEFT JOIN grados g ON tg.grado_id = g.id
         LEFT JOIN especialidades e ON p.especialidad_id = e.id
         WHERE p.lugar_guardia_id = ? AND p.activo = 1
-        ORDER BY g.nivel_jerarquia, p.nombre
+        ORDER BY g.nivel_jerarquia, tg.nivel_jerarquia, p.nombre
     ");
     $stmt->execute([$id]);
     $policias = $stmt->fetchAll();
     
     // Obtener últimas guardias realizadas
     $stmt = $pdo->prepare("
-        SELECT gr.fecha_inicio, gr.fecha_fin, gr.puesto, p.nombre, p.apellido, g.nombre as grado
+        SELECT gr.fecha_inicio, gr.fecha_fin, gr.puesto, p.nombre, p.apellido, tg.nombre as grado
         FROM guardias_realizadas gr
         JOIN policias p ON gr.policia_id = p.id
-        LEFT JOIN grados g ON p.grado_id = g.id
+        LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+        LEFT JOIN grados g ON tg.grado_id = g.id
         WHERE gr.lugar_guardia_id = ?
         ORDER BY gr.fecha_inicio DESC
         LIMIT 10

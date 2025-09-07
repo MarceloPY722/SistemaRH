@@ -16,9 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $ausencia_id = $_POST['ausencia_id'];
             $sql = "UPDATE ausencias SET estado = 'APROBADA', aprobado_por = ? WHERE id = ?";
             $stmt = $conn->prepare($sql);
-            $stmt->bind_param('ii', $_SESSION['usuario_id'], $ausencia_id);
             
-            if ($stmt->execute()) {
+            if ($stmt->execute([$_SESSION['usuario_id'], $ausencia_id])) {
                 $_SESSION['mensaje'] = 'Ausencia aprobada exitosamente';
                 $_SESSION['tipo_mensaje'] = 'success';
             }
@@ -28,62 +27,92 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $ausencia_id = $_POST['ausencia_id'];
             $sql = "UPDATE ausencias SET estado = 'RECHAZADA' WHERE id = ?";
             $stmt = $conn->prepare($sql);
-            $stmt->bind_param('i', $ausencia_id);
             
-            if ($stmt->execute()) {
+            if ($stmt->execute([$ausencia_id])) {
                 $_SESSION['mensaje'] = 'Ausencia rechazada';
                 $_SESSION['tipo_mensaje'] = 'warning';
             }
             break;
             
-        case 'completar':
+        case 'marcar_completado':
             $ausencia_id = $_POST['ausencia_id'];
-            $sql = "UPDATE ausencias SET estado = 'COMPLETADA' WHERE id = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param('i', $ausencia_id);
             
-            if ($stmt->execute()) {
-                $_SESSION['mensaje'] = 'Ausencia marcada como completada';
+            try {
+                $conn->beginTransaction();
+                
+                // Obtener información de la ausencia
+                $stmt_info = $conn->prepare("SELECT policia_id FROM ausencias WHERE id = ?");
+                $stmt_info->execute([$ausencia_id]);
+                $ausencia_info = $stmt_info->fetch(PDO::FETCH_ASSOC);
+                
+                if ($ausencia_info) {
+                    $policia_id = $ausencia_info['policia_id'];
+                    
+                    // Actualizar el estado de la ausencia a COMPLETADA
+                    $sql = "UPDATE ausencias SET estado = 'COMPLETADA', updated_at = NOW() WHERE id = ?";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->execute([$ausencia_id]);
+                    
+                    // Verificar si el policía tiene otras ausencias activas
+                    $stmt_check_otras = $conn->prepare("SELECT COUNT(*) as count FROM ausencias WHERE policia_id = ? AND estado = 'APROBADA' AND id != ? AND (fecha_fin IS NULL OR fecha_fin >= CURDATE()) AND fecha_inicio <= CURDATE()");
+                    $stmt_check_otras->execute([$policia_id, $ausencia_id]);
+                    $otras_ausencias = $stmt_check_otras->fetch(PDO::FETCH_ASSOC)['count'];
+                    
+                    // Si no tiene otras ausencias activas, restaurar estado a DISPONIBLE
+                    if ($otras_ausencias == 0) {
+                        $stmt_restore_estado = $conn->prepare("UPDATE policias SET estado = 'DISPONIBLE' WHERE id = ?");
+                        $stmt_restore_estado->execute([$policia_id]);
+                    }
+                }
+                
+                $conn->commit();
+                
+                $_SESSION['mensaje'] = 'Ausencia marcada como completada exitosamente. Estado del policía actualizado.';
                 $_SESSION['tipo_mensaje'] = 'success';
+                
+            } catch (Exception $e) {
+                $conn->rollback();
+                $_SESSION['mensaje'] = 'Error al marcar ausencia como completada: ' . $e->getMessage();
+                $_SESSION['tipo_mensaje'] = 'danger';
             }
             break;
             
-        case 'eliminar':
-            $ausencia_id = $_POST['ausencia_id'];
-            $sql = "DELETE FROM ausencias WHERE id = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param('i', $ausencia_id);
-            
-            if ($stmt->execute()) {
-                $_SESSION['mensaje'] = 'Ausencia eliminada exitosamente';
-                $_SESSION['tipo_mensaje'] = 'success';
-            }
-            break;
+
     }
     
     header('Location: index.php');
     exit();
 }
 
-// Obtener ausencias activas
-$sql_ausencias = "SELECT a.*, p.nombre, p.apellido, p.cin, g.nombre as grado, ta.nombre as tipo_ausencia,
-                         u.nombre_completo as aprobado_por_nombre
+// Obtener ausencias activas (excluyendo Junta Médica)
+$sql_ausencias = "SELECT a.*, p.nombre, p.apellido, p.cin, p.legajo, g.nombre as grado, ta.nombre as tipo_ausencia,
+                         u.nombre_completo as aprobado_por_nombre,
+                         lg_principal.nombre as lugar_principal
                   FROM ausencias a
                   JOIN policias p ON a.policia_id = p.id
-                  JOIN grados g ON p.grado_id = g.id
+                  LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+                  LEFT JOIN grados g ON tg.grado_id = g.id
                   JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id
                   LEFT JOIN usuarios u ON a.aprobado_por = u.id
-                  WHERE a.estado IN ('PENDIENTE', 'APROBADA')
+                  LEFT JOIN lugares_guardias lg_principal ON p.lugar_guardia_id = lg_principal.id
+                  WHERE a.estado IN ('PENDIENTE', 'APROBADA', 'COMPLETADA')
+                  AND ta.nombre != 'Junta Medica'
                   ORDER BY a.created_at DESC";
-$result_ausencias = $conn->query($sql_ausencias);
+$result_ausencias = $conn->prepare($sql_ausencias);
+$result_ausencias->execute();
+
+// Obtener estadísticas (excluyendo Junta Médica)
+$sql_stats = "SELECT 
+                (SELECT COUNT(*) FROM ausencias a JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id WHERE a.estado = 'PENDIENTE' AND ta.nombre != 'Junta Medica') as pendientes,
+                (SELECT COUNT(*) FROM ausencias a JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id WHERE a.estado = 'APROBADA' AND ta.nombre != 'Junta Medica') as aprobadas,
+                (SELECT COUNT(*) FROM ausencias a JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id WHERE a.estado = 'COMPLETADA' AND ta.nombre != 'Junta Medica') as completadas,
+                (SELECT COUNT(*) FROM ausencias a JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id WHERE a.estado = 'APROBADA' AND ta.nombre != 'Junta Medica' AND CURDATE() BETWEEN a.fecha_inicio AND COALESCE(a.fecha_fin, a.fecha_inicio)) as ausentes_activos";
+$result_stats = $conn->prepare($sql_stats);
+$result_stats->execute();
+$stats = $result_stats->fetch(PDO::FETCH_ASSOC);
 ?>
 
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestión de Ausencias - Sistema RH</title>
+    <title>Gestión de Ausencias (Generales) - Sistema RH</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -115,6 +144,27 @@ $result_ausencias = $conn->query($sql_ausencias);
             box-shadow: 0 4px 15px rgba(16, 76, 117, 0.2);
         }
 
+        .stats-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .stats-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
         .btn-primary {
             background: var(--primary-color);
             border: none;
@@ -142,95 +192,37 @@ $result_ausencias = $conn->query($sql_ausencias);
             color: white;
         }
 
-        .card {
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 2rem;
-        }
-
-        .card-header {
-            background: white;
-            border-bottom: 2px solid var(--primary-color);
-            border-radius: 15px 15px 0 0 !important;
-            padding: 1.5rem;
-        }
-
-        .table {
-            margin-bottom: 0;
-        }
-
-        .table thead {
-            background: var(--primary-color);
-            color: white;
-        }
-
-        .table thead th {
-            border: none;
+        .status-badge {
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
             font-weight: 500;
-            padding: 1rem 0.75rem;
         }
 
-        .table tbody td {
-            padding: 1rem 0.75rem;
-            vertical-align: middle;
+        .status-pendiente {
+            background-color: #fff3cd;
+            color: #856404;
         }
 
-        .badge {
-            font-size: 0.8em;
-            padding: 6px 12px;
-            border-radius: 6px;
+        .status-aprobada {
+            background-color: #d4edda;
+            color: #155724;
         }
 
-        .badge-warning {
-            background: var(--warning-color);
+        .status-rechazada {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-completada {
+            background-color: #cce5ff;
+            color: #004085;
         }
 
-        .badge-success {
-            background: var(--success-color);
-        }
-
-        .badge-danger {
-            background: var(--danger-color);
-        }
-
-        .btn-sm {
-            padding: 6px 12px;
+        .action-btn {
             margin: 0 2px;
-            border-radius: 6px;
-        }
-
-        .no-results {
-            text-align: center;
-            padding: 3rem;
-            color: #6c757d;
-        }
-
-        .no-results i {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            opacity: 0.5;
-        }
-
-        .alert {
-            border-radius: 10px;
-            border: none;
-        }
-
-        @media (max-width: 768px) {
-            .main-content {
-                padding: 15px;
-            }
-            
-            .page-header {
-                padding: 1.5rem;
-                text-align: center;
-            }
-            
-            .d-flex {
-                flex-direction: column;
-                gap: 10px;
-            }
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
         }
     </style>
 </head>
@@ -258,141 +250,164 @@ $result_ausencias = $conn->query($sql_ausencias);
                     <div class="page-header">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <h1 class="mb-2"><i class="fas fa-calendar-times me-3"></i>Gestión de Ausencias</h1>
-                                <p class="mb-0 opacity-75">Administra las ausencias del personal policial</p>
+                                <h1><i class="fas fa-calendar-alt me-2"></i>Gestión de Ausencias</h1>
+                                <p>Administra las ausencias del personal policial</p>
+                            </div>
+                            <div>
+                                <a href="agregar_ausencia.php" class="btn btn-primary">
+                                    <i class="fas fa-plus me-1"></i>Nueva Ausencia
+                                </a>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Botones de Acción -->
-                    <div class="d-flex gap-3 mb-4">
-                        <a href="agregar_ausencia.php" class="btn btn-primary">
-                            <i class="fas fa-plus me-2"></i>Nueva Ausencia
-                        </a>
-                        <a href="historial_ausencias.php" class="btn btn-outline-info">
-                            <i class="fas fa-history me-2"></i>Ver Historial
-                        </a>
+                    <!-- Estadísticas -->
+                    <div class="row mb-4">
+                        <div class="col-md-2 mb-3">
+                            <div class="stats-card text-center">
+                                <div class="stats-number"><?php echo $stats['pendientes']; ?></div>
+                                <div class="text-muted">Pendientes</div>
+                            </div>
+                        </div>
+                        <div class="col-md-2 mb-3">
+                            <div class="stats-card text-center">
+                                <div class="stats-number"><?php echo $stats['aprobadas']; ?></div>
+                                <div class="text-muted">Aprobadas</div>
+                            </div>
+                        </div>
+                        <div class="col-md-2 mb-3">
+                            <div class="stats-card text-center">
+                                <div class="stats-number"><?php echo $stats['completadas']; ?></div>
+                                <div class="text-muted">Completadas</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="stats-card text-center">
+                                <div class="stats-number"><?php echo $stats['ausentes_activos']; ?></div>
+                                <div class="text-muted">Ausentes Activos</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="stats-card text-center">
+                                <a href="historial_ausencias.php" class="btn btn-outline-info w-100">
+                                    <i class="fas fa-history me-1"></i>Ver Historial
+                                </a>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Lista de Ausencias Activas -->
-                    <div class="card">
-                        <div class="card-header">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">
-                                    <i class="fas fa-list me-2"></i>Personal Ausente Activo
-                                </h5>
-                                <span class="badge bg-primary">
-                                    <?php echo $result_ausencias->num_rows; ?> ausencias activas
-                                </span>
-                            </div>
+                    <div class="table-container">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Policía</th>
+                                        <th>Tipo</th>
+                                        <th>Fechas</th>
+                                        <th>Lugar de Guardia</th>
+                                        <th>Estado</th>
+                                        <th>Registrado</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php while ($ausencia = $result_ausencias->fetch(PDO::FETCH_ASSOC)): ?>
+                                    <tr>
+                                        <td>
+                                            <strong><?php echo htmlspecialchars($ausencia['apellido'] . ', ' . $ausencia['nombre']); ?></strong><br>
+                                            <small class="text-muted">CI: <?php echo htmlspecialchars($ausencia['cin']); ?> - Legajo: <?php echo htmlspecialchars($ausencia['legajo']); ?> - <?php echo htmlspecialchars($ausencia['grado']); ?></small>
+                                        </td>
+                                        <td><?php echo htmlspecialchars($ausencia['tipo_ausencia']); ?></td>
+                                        <td>
+                                            <small>
+                                                Inicio: <?php echo date('d/m/Y', strtotime($ausencia['fecha_inicio'])); ?><br>
+                                                <?php if ($ausencia['fecha_fin']): ?>
+                                                Fin: <?php echo date('d/m/Y', strtotime($ausencia['fecha_fin'])); ?>
+                                                <?php else: ?>
+                                                <span class="text-muted">Fecha única</span>
+                                                <?php endif; ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <small>
+                                                <strong>Lugar de Guardia:</strong> <?php echo htmlspecialchars($ausencia['lugar_principal']); ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <span class="status-badge status-<?php echo strtolower($ausencia['estado']); ?>">
+                                                <?php echo $ausencia['estado']; ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <small>
+                                                <?php echo date('d/m/Y H:i', strtotime($ausencia['created_at'])); ?><br>
+                                                <?php if ($ausencia['aprobado_por_nombre']): ?>
+                                                Aprobó: <?php echo htmlspecialchars($ausencia['aprobado_por_nombre']); ?>
+                                                <?php endif; ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group" role="group">
+                                                <?php if ($ausencia['estado'] == 'PENDIENTE'): ?>
+                                                <form method="POST" style="display: inline;">
+                                                    <input type="hidden" name="action" value="aprobar">
+                                                    <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
+                                                    <button type="submit" class="btn btn-sm btn-success action-btn" title="Aprobar">
+                                                        <i class="fas fa-check"></i>
+                                                    </button>
+                                                </form>
+                                                <form method="POST" style="display: inline;">
+                                                    <input type="hidden" name="action" value="rechazar">
+                                                    <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
+                                                    <button type="submit" class="btn btn-sm btn-warning action-btn" title="Rechazar">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                </form>
+                                                <?php endif; ?>
+                                                
+                                                <?php if ($ausencia['estado'] == 'APROBADA'): ?>
+                                                <form method="POST" style="display: inline;">
+                                                    <input type="hidden" name="action" value="marcar_completado">
+                                                    <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
+                                                    <button type="submit" class="btn btn-sm btn-info action-btn" title="Marcar como Completado">
+                                                        <i class="fas fa-check-double"></i>
+                                                    </button>
+                                                </form>
+                                                <?php endif; ?>
+                                                
+                                                <a href="editar_ausencia.php?id=<?php echo $ausencia['id']; ?>" class="btn btn-sm btn-primary action-btn" title="Editar">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                                <a href="ver_ausencia.php?id=<?php echo $ausencia['id']; ?>" class="btn btn-sm btn-info action-btn" title="Ver Detalles">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <?php endwhile; ?>
+                                </tbody>
+                            </table>
                         </div>
-                        <div class="card-body p-0">
-                            <?php if ($result_ausencias->num_rows > 0): ?>
-                            <div class="table-responsive">
-                                <table class="table table-hover">
-                                    <thead>
-                                        <tr>
-                                            <th>Policía</th>
-                                            <th>Grado</th>
-                                            <th>Tipo</th>
-                                            <th>Fechas</th>
-                                            <th>Estado</th>
-                                            <th>Descripción</th>
-                                            <th class="text-center">Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php while ($ausencia = $result_ausencias->fetch_assoc()): ?>
-                                        <tr>
-                                            <td>
-                                                <strong><?php echo $ausencia['apellido'] . ', ' . $ausencia['nombre']; ?></strong>
-                                                <br><small class="text-muted">CI: <?php echo $ausencia['cin']; ?></small>
-                                            </td>
-                                            <td>
-                                                <span class="badge bg-secondary"><?php echo $ausencia['grado']; ?></span>
-                                            </td>
-                                            <td>
-                                                <span class="badge bg-info"><?php echo $ausencia['tipo_ausencia']; ?></span>
-                                            </td>
-                                            <td>
-                                                <small>
-                                                    <strong>Inicio:</strong> <?php echo date('d/m/Y', strtotime($ausencia['fecha_inicio'])); ?><br>
-                                                    <strong>Fin:</strong> <?php echo $ausencia['fecha_fin'] ? date('d/m/Y', strtotime($ausencia['fecha_fin'])) : 'Sin fecha fin'; ?>
-                                                </small>
-                                            </td>
-                                            <td>
-                                                <?php
-                                                $badge_class = '';
-                                                switch($ausencia['estado']) {
-                                                    case 'PENDIENTE': $badge_class = 'badge-warning'; break;
-                                                    case 'APROBADA': $badge_class = 'badge-success'; break;
-                                                    case 'RECHAZADA': $badge_class = 'badge-danger'; break;
-                                                    case 'COMPLETADA': $badge_class = 'badge-secondary'; break;
-                                                }
-                                                ?>
-                                                <span class="badge <?php echo $badge_class; ?>"><?php echo $ausencia['estado']; ?></span>
-                                            </td>
-                                            <td>
-                                                <small><?php echo $ausencia['descripcion'] ? substr($ausencia['descripcion'], 0, 40) . '...' : 'Sin descripción'; ?></small>
-                                            </td>
-                                            <td class="text-center">
-                                                <div class="btn-group" role="group">
-                                                    <?php if ($ausencia['estado'] == 'PENDIENTE'): ?>
-                                                    <form method="POST" style="display: inline;">
-                                                        <input type="hidden" name="action" value="aprobar">
-                                                        <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
-                                                        <button type="submit" class="btn btn-sm btn-success" title="Aprobar">
-                                                            <i class="fas fa-check"></i>
-                                                        </button>
-                                                    </form>
-                                                    <form method="POST" style="display: inline;">
-                                                        <input type="hidden" name="action" value="rechazar">
-                                                        <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
-                                                        <button type="submit" class="btn btn-sm btn-warning" title="Rechazar">
-                                                            <i class="fas fa-times"></i>
-                                                        </button>
-                                                    </form>
-                                                    <?php endif; ?>
-                                                    
-                                                    <?php if ($ausencia['estado'] == 'APROBADA'): ?>
-                                                    <form method="POST" style="display: inline;">
-                                                        <input type="hidden" name="action" value="completar">
-                                                        <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
-                                                        <button type="submit" class="btn btn-sm btn-info" title="Completar">
-                                                            <i class="fas fa-check-double"></i>
-                                                        </button>
-                                                    </form>
-                                                    <?php endif; ?>
-                                                    
-                                                    <form method="POST" style="display: inline;" 
-                                                          onsubmit="return confirm('¿Está seguro de eliminar esta ausencia?')">
-                                                        <input type="hidden" name="action" value="eliminar">
-                                                        <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
-                                                        <button type="submit" class="btn btn-sm btn-danger" title="Eliminar">
-                                                            <i class="fas fa-trash"></i>
-                                                        </button>
-                                                    </form>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <?php endwhile; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <?php else: ?>
-                            <div class="no-results">
-                                <i class="fas fa-calendar-check"></i>
-                                <h4>No hay ausencias activas</h4>
-                                <p class="mb-0">Actualmente no hay personal con ausencias pendientes o aprobadas.</p>
-                            </div>
-                            <?php endif; ?>
+                        <?php if ($result_ausencias->rowCount() == 0): ?>
+                        <div class="text-center py-5">
+                            <i class="fas fa-calendar-check text-muted" style="font-size: 3rem;"></i>
+                            <h5 class="text-muted mt-3">No hay ausencias registradas</h5>
+                            <p class="text-muted">Comienza registrando una nueva ausencia.</p>
                         </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+   
 </body>
-</html>
+
+ <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Auto-refresh cada 30 segundos para actualizar la lista de ausentes
+        setTimeout(function() {
+            location.reload();
+        }, 30000);
+    </script>

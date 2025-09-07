@@ -24,35 +24,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Verificar si ya existe un lugar con el mismo nombre
                 $stmt_check = $conn->prepare("SELECT id FROM lugares_guardias WHERE nombre = ?");
                 if ($stmt_check) {
-                    $stmt_check->bind_param("s", $nombre);
+                    $stmt_check->bindParam(1, $nombre, PDO::PARAM_STR);
                     $stmt_check->execute();
-                    $result_check = $stmt_check->get_result();
                     
-                    if ($result_check->num_rows > 0) {
+                    if ($stmt_check->rowCount() > 0) {
                         $mensaje = "Ya existe un lugar de guardia con ese nombre.";
                         $tipo_mensaje = "warning";
                     } else {
                         // Insertar nuevo lugar
                         $stmt = $conn->prepare("INSERT INTO lugares_guardias (nombre, direccion, descripcion, activo) VALUES (?, ?, ?, ?)");
                         if ($stmt) {
-                            $stmt->bind_param("sssi", $nombre, $direccion, $descripcion, $activo);
+                            $stmt->bindParam(1, $nombre, PDO::PARAM_STR);
+                            $stmt->bindParam(2, $direccion, PDO::PARAM_STR);
+                            $stmt->bindParam(3, $descripcion, PDO::PARAM_STR);
+                            $stmt->bindParam(4, $activo, PDO::PARAM_INT);
                             
                             if ($stmt->execute()) {
                                 $mensaje = "Lugar de guardia agregado exitosamente.";
                                 $tipo_mensaje = "success";
                             } else {
-                                $mensaje = "Error al agregar el lugar de guardia: " . $stmt->error;
+                                $mensaje = "Error al agregar el lugar de guardia.";
                                 $tipo_mensaje = "danger";
                             }
-                            $stmt->close();
                         } else {
-                            $mensaje = "Error en la preparación de la consulta: " . $conn->error;
+                            $mensaje = "Error en la preparación de la consulta.";
                             $tipo_mensaje = "danger";
                         }
                     }
-                    $stmt_check->close();
                 } else {
-                    $mensaje = "Error al verificar duplicados: " . $conn->error;
+                    $mensaje = "Error al verificar duplicados.";
                     $tipo_mensaje = "danger";
                 }
             } else {
@@ -67,10 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($lugar_id > 0) {
                 $stmt = $conn->prepare("DELETE FROM lugares_guardias WHERE id = ?");
                 if ($stmt) {
-                    $stmt->bind_param("i", $lugar_id);
+                    $stmt->bindParam(1, $lugar_id, PDO::PARAM_INT);
                     
                     if ($stmt->execute()) {
-                        if ($stmt->affected_rows > 0) {
+                        if ($stmt->rowCount() > 0) {
                             $mensaje = "Lugar de guardia eliminado exitosamente.";
                             $tipo_mensaje = "success";
                         } else {
@@ -78,12 +78,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $tipo_mensaje = "warning";
                         }
                     } else {
-                        $mensaje = "Error al eliminar el lugar de guardia: " . $stmt->error;
+                        $mensaje = "Error al eliminar el lugar de guardia.";
                         $tipo_mensaje = "danger";
                     }
-                    $stmt->close();
                 } else {
-                    $mensaje = "Error en la preparación de la consulta: " . $conn->error;
+                    $mensaje = "Error en la preparación de la consulta.";
                     $tipo_mensaje = "danger";
                 }
             } else {
@@ -96,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $lugares_guardia = [];
 $result_lugares = $conn->query("SELECT * FROM lugares_guardias ORDER BY nombre ASC");
 if ($result_lugares) {
-    while ($row = $result_lugares->fetch_assoc()) {
+    while ($row = $result_lugares->fetch()) {
         $lugares_guardia[] = $row;
     }
 }

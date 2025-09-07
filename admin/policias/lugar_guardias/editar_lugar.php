@@ -21,17 +21,14 @@ $lugar_id = intval($_GET['id']);
 // Obtener datos del lugar
 $stmt = $conn->prepare("SELECT * FROM lugares_guardias WHERE id = ?");
 if ($stmt) {
-    $stmt->bind_param("i", $lugar_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $stmt->execute([$lugar_id]);
     
-    if ($result->num_rows === 0) {
+    if ($stmt->rowCount() === 0) {
         header('Location: index.php');
         exit();
     }
     
-    $lugar = $result->fetch_assoc();
-    $stmt->close();
+    $lugar = $stmt->fetch();
 } else {
     header('Location: index.php');
     exit();
@@ -49,21 +46,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Verificar si ya existe otro lugar con el mismo nombre
         $stmt_check = $conn->prepare("SELECT id FROM lugares_guardias WHERE nombre = ? AND id != ?");
         if ($stmt_check) {
-            $stmt_check->bind_param("si", $nombre, $lugar_id);
-            $stmt_check->execute();
-            $result_check = $stmt_check->get_result();
+            $stmt_check->execute([$nombre, $lugar_id]);
             
-            if ($result_check->num_rows > 0) {
+            if ($stmt_check->rowCount() > 0) {
                 $mensaje = "Ya existe otro lugar de guardia con ese nombre.";
                 $tipo_mensaje = "warning";
             } else {
                 // Actualizar lugar
                 $stmt_update = $conn->prepare("UPDATE lugares_guardias SET nombre = ?, zona = ?, direccion = ?, descripcion = ?, activo = ?, updated_at = NOW() WHERE id = ?");
                 if ($stmt_update) {
-                    $stmt_update->bind_param("ssssii", $nombre, $zona, $direccion, $descripcion, $activo, $lugar_id);
+                    $stmt_update->bindParam(1, $nombre, PDO::PARAM_STR);
+                    $stmt_update->bindParam(2, $zona, PDO::PARAM_STR);
+                    $stmt_update->bindParam(3, $direccion, PDO::PARAM_STR);
+                    $stmt_update->bindParam(4, $descripcion, PDO::PARAM_STR);
+                    $stmt_update->bindParam(5, $activo, PDO::PARAM_INT);
+                    $stmt_update->bindParam(6, $lugar_id, PDO::PARAM_INT);
                     
                     if ($stmt_update->execute()) {
-                        if ($stmt_update->affected_rows > 0) {
+                        if ($stmt_update->rowCount() > 0) {
                             $mensaje = "Lugar de guardia actualizado exitosamente.";
                             $tipo_mensaje = "success";
                             
@@ -78,18 +78,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $tipo_mensaje = "info";
                         }
                     } else {
-                        $mensaje = "Error al actualizar el lugar de guardia: " . $stmt_update->error;
+                        $mensaje = "Error al actualizar el lugar de guardia.";
                         $tipo_mensaje = "danger";
                     }
                     $stmt_update->close();
                 } else {
-                    $mensaje = "Error en la preparación de la consulta: " . $conn->error;
+                    $mensaje = "Error en la preparación de la consulta.";
                     $tipo_mensaje = "danger";
                 }
             }
             $stmt_check->close();
         } else {
-            $mensaje = "Error al verificar duplicados: " . $conn->error;
+            $mensaje = "Error al verificar duplicados.";
             $tipo_mensaje = "danger";
         }
     } else {

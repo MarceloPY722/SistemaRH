@@ -8,8 +8,11 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
-// Obtener grados, especialidades, regiones y lugares de guardia para los formularios
-$grados = $conn->query("SELECT * FROM grados ORDER BY nivel_jerarquia ASC");
+$grados = $conn->query("SELECT tg.*, g.nombre as categoria_nombre FROM tipo_grados tg JOIN grados g ON tg.grado_id = g.id ORDER BY g.nivel_jerarquia ASC, tg.nivel_jerarquia ASC");
+
+$categorias_grados = $conn->query("SELECT DISTINCT g.nombre as categoria_nombre, g.nivel_jerarquia FROM grados g ORDER BY g.nivel_jerarquia ASC");
+// Obtener tipos específicos de grados para el segundo filtro
+$tipos_grados = $conn->query("SELECT tg.*, g.nombre as categoria_nombre FROM tipo_grados tg JOIN grados g ON tg.grado_id = g.id ORDER BY g.nivel_jerarquia ASC, tg.nivel_jerarquia ASC");
 $especialidades = $conn->query("SELECT * FROM especialidades ORDER BY nombre ASC");
 $regiones = $conn->query("SELECT * FROM regiones ORDER BY nombre ASC");
 $lugares_guardias = $conn->query("SELECT * FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
@@ -23,34 +26,32 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
     $genero = $_POST['genero'];
     $grado_id = $_POST['grado_id'];
     $especialidad_id = $_POST['especialidad_id'] ?: null;
-    $cargo = trim($_POST['cargo']);
     $comisionamiento = trim($_POST['comisionamiento']);
     $telefono = trim($_POST['telefono']);
     $region_id = $_POST['region_id'];
     $lugar_guardia_id = $_POST['lugar_guardia_id'] ?: null;
     
-    $sql = "INSERT INTO policias (legajo, nombre, apellido, cin, genero, grado_id, especialidad_id, cargo, comisionamiento, telefono, region_id, lugar_guardia_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $sql = "INSERT INTO policias (legajo, nombre, apellido, cin, genero, grado_id, especialidad_id, comisionamiento, telefono, region_id, lugar_guardia_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("issssiisssii", $legajo, $nombre, $apellido, $cin, $genero, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region_id, $lugar_guardia_id);
     
-    if ($stmt->execute()) {
+    if ($stmt->execute([$legajo, $nombre, $apellido, $cin, $genero, $grado_id, $especialidad_id, $comisionamiento, $telefono, $region_id, $lugar_guardia_id])) {
         $mensaje = "<div class='alert alert-success'>Policía registrado exitosamente</div>";
     } else {
-        $mensaje = "<div class='alert alert-danger'>Error al registrar policía: " . $conn->error . "</div>";
+        $mensaje = "<div class='alert alert-danger'>Error al registrar policía</div>";
     }
 }
 
-// Obtener lista de policías
-
 $policias = $conn->query("
-    SELECT p.*, g.nombre as grado_nombre, e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre
+    SELECT p.*, tg.nombre as grado_nombre, tg.abreviatura as grado_abreviatura, g.nombre as categoria_nombre, 
+           e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre
     FROM policias p
-    LEFT JOIN grados g ON p.grado_id = g.id
+    LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+    LEFT JOIN grados g ON tg.grado_id = g.id
     LEFT JOIN especialidades e ON p.especialidad_id = e.id
     LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
     LEFT JOIN regiones r ON p.region_id = r.id
     WHERE p.activo = 1
-    ORDER BY g.nivel_jerarquia ASC, p.apellido ASC");
+    ORDER BY g.nivel_jerarquia ASC, tg.nivel_jerarquia ASC, p.legajo ASC");
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -64,6 +65,7 @@ $policias = $conn->query("
         body {
             background-color: #f8f9fa;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 13px;
         }
         .navbar {
             background: linear-gradient(45deg, #104c75, #0d3d5c) !important;
@@ -78,21 +80,43 @@ $policias = $conn->query("
         }
         .card {
             border: none;
-            border-radius: 15px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        }
+        .card-body {
+            padding: 10px;
+        }
+        .card-header {
+            padding: 8px 15px;
         }
         .main-content {
-            padding: 30px;
+            padding: 15px;
         }
         .page-title {
             color: #2c3e50;
             font-weight: 600;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+        .table {
+            font-size: 12px;
+            margin-bottom: 0;
         }
         .table th {
             background-color: #34495e;
             color: white;
             border: none;
+            padding: 8px 6px;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .table td {
+            padding: 6px 6px;
+            vertical-align: middle;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .table-responsive {
+            font-size: 12px;
         }
         
         /* Estilos para el buscador */
@@ -204,59 +228,78 @@ $policias = $conn->query("
 
                     <?php if (isset($mensaje)) echo $mensaje; ?>
 
-                    <div class="header-controls">
-                        <div class="d-flex gap-2">
-                            <a href="agregar.php" class="btn btn-primary">
-                                <i class="fas fa-plus"></i> Registrar Nuevo Policía
+                    <div class="header-controls" style="margin-bottom: 10px;">
+                        <div class="d-flex gap-2 mb-2">
+                            <a href="agregar.php" class="btn btn-primary btn-sm">
+                                <i class="fas fa-plus"></i> Nuevo
                             </a>
-                            <a href="deshabilitados.php" class="btn btn-outline-secondary">
-                                <i class="fas fa-user-slash"></i> Ver Deshabilitados
+                            <a href="deshabilitados.php" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-user-slash"></i> Deshabilitados
                             </a>
                         </div>
                         
-                        <div class="d-flex gap-3 align-items-end flex-wrap">
+                        <!-- Buscador en tiempo real -->
+                        <div class="d-flex gap-2 align-items-end flex-wrap mb-2">
                             <div class="filter-group">
-                                <label class="form-label mb-1">Región:</label>
-                                <select class="form-select form-select-sm" id="filtroRegion" style="min-width: 150px;">
-                                    <option value="">Todas las regiones</option>
-                                    <?php 
-                                    $regiones->data_seek(0);
-                                    while ($region = $regiones->fetch_assoc()): 
-                                    ?>
-                                    <option value="<?php echo htmlspecialchars($region['nombre']); ?>"><?php echo htmlspecialchars($region['nombre']); ?></option>
-                                    <?php endwhile; ?>
-                                </select>
-                            </div>
-                            <div class="filter-group">
-                                <label class="form-label mb-1">Grado:</label>
-                                <select class="form-select form-select-sm" id="filtroGrado" style="min-width: 150px;">
-                                    <option value="">Todos los grados</option>
-                                    <?php 
-                                    $grados->data_seek(0);
-                                    while ($grado = $grados->fetch_assoc()): 
-                                    ?>
-                                    <option value="<?php echo htmlspecialchars($grado['nombre']); ?>"><?php echo htmlspecialchars($grado['nombre']); ?></option>
-                                    <?php endwhile; ?>
-                                </select>
-                            </div>
-                            <div class="filter-group">
-                                <label class="form-label mb-1">Buscar:</label>
-                                <div class="search-container" style="min-width: 250px;">
-                                    <input type="text" 
-                                           id="searchInput" 
-                                           class="form-control search-input" 
-                                           placeholder="Buscar policías..." 
-                                           autocomplete="off">
-                                    <button type="button" id="clearSearch" class="clear-search">
+                                <label class="form-label mb-1" style="font-size: 12px;">Buscar:</label>
+                                <div class="search-container" style="min-width: 200px;">
+                                    <input type="text" class="form-control search-input" id="buscarPersonal" placeholder="Nombre, legajo, CIN..." style="height: 30px; font-size: 12px;">
+                                    <button type="button" class="clear-search" id="limpiarBusqueda">
                                         <i class="fas fa-times"></i>
                                     </button>
                                     <i class="fas fa-search search-icon"></i>
                                 </div>
                             </div>
-                            
+                        </div>
+                        
+                        <div class="d-flex gap-2 align-items-end flex-wrap">
                             <div class="filter-group">
-                                <label class="form-label mb-1" style="visibility: hidden;">Acción:</label>
-                                <button type="button" id="limpiarFiltros" class="btn btn-outline-secondary btn-sm">
+                                <label class="form-label mb-1" style="font-size: 11px;">Guardia:</label>
+                                <select class="form-select form-select-sm" id="filtroLugarGuardia" style="min-width: 120px; height: 30px; font-size: 11px;">
+                                    <option value="">Todos</option>
+                                    <?php 
+                                    while ($lugar = $lugares_guardias->fetch()): 
+                                    ?>
+                                    <option value="<?php echo htmlspecialchars($lugar['nombre']); ?>"><?php echo htmlspecialchars($lugar['nombre']); ?></option>
+                                    <?php endwhile; ?>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label class="form-label mb-1" style="font-size: 11px;">Región:</label>
+                                <select class="form-select form-select-sm" id="filtroRegion" style="min-width: 100px; height: 30px; font-size: 11px;">
+                                    <option value="">Todas</option>
+                                    <?php 
+                                    foreach ($regiones as $region): 
+                                    ?>
+                                    <option value="<?php echo htmlspecialchars($region['nombre']); ?>"><?php echo htmlspecialchars($region['nombre']); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label class="form-label mb-1" style="font-size: 11px;">Categoría:</label>
+                                <select class="form-select form-select-sm" id="filtroCategoria" style="min-width: 120px; height: 30px; font-size: 11px;">
+                                    <option value="">Todas</option>
+                                    <?php 
+                                    while ($categoria = $categorias_grados->fetch()): 
+                                    ?>
+                                    <option value="<?php echo htmlspecialchars($categoria['categoria_nombre']); ?>"><?php echo htmlspecialchars($categoria['categoria_nombre']); ?></option>
+                                    <?php endwhile; ?>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label class="form-label mb-1" style="font-size: 11px;">Tipo:</label>
+                                <select class="form-select form-select-sm" id="filtroTipoGrado" style="min-width: 120px; height: 30px; font-size: 11px;">
+                                    <option value="">Todos</option>
+                                    <?php 
+                                    while ($tipo = $tipos_grados->fetch()): 
+                                    ?>
+                                    <option value="<?php echo htmlspecialchars($tipo['nombre']); ?>"><?php echo htmlspecialchars($tipo['categoria_nombre'] . ' - ' . $tipo['nombre']); ?></option>
+                                    <?php endwhile; ?>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label class="form-label mb-1" style="visibility: hidden; font-size: 11px;">Acción:</label>
+                                <button type="button" id="limpiarFiltros" class="btn btn-outline-secondary btn-sm" style="height: 30px; font-size: 11px; padding: 4px 8px;">
                                     <i class="fas fa-times"></i> Limpiar
                                 </button>
                             </div>
@@ -267,46 +310,63 @@ $policias = $conn->query("
                             <h5><i class="fas fa-list"></i> Lista de Policías Activos</h5>
                         </div>
                         <div class="card-body">
+                            <!-- Información de resultados de búsqueda -->
+                            <div id="searchInfo" class="search-results-info" style="display: none;"></div>
+                            
                             <div class="table-responsive">
-                                <table class="table table-striped" id="policiasTable">
+                                <table class="table table-striped table-sm" id="policiasTable">
                                     <thead>
                                         <tr>
-                                            <th>Legajo</th>
-                                            <th>CIN</th>
-                                            <th>Nombre Completo</th>
-                                            <th>Grado</th>
-                                            <th>Especialidad</th>
-                                            <th>Cargo</th>
-                                            <th>Teléfono</th>
-                                            <th>Región</th>
-                                            <th>Acciones</th>
+                                            <th style="width: 8%;">Legajo</th>
+                            <th style="width: 10%;">CIN</th>
+                            <th style="width: 20%;">Nombre</th>
+                            <th style="width: 27%;">Grado</th>
+                            <th style="width: 10%;">Teléfono</th>
+                            <th style="width: 12%;">Guardia</th>
+                            <th style="width: 8%;">Región</th>
+                            <th style="width: 5%;">Acc.</th>
                                         </tr>
                                     </thead>
                                     <tbody id="policiasTableBody">
-                                        <?php while ($policia = $policias->fetch_assoc()): ?>
-                                        <tr class="policia-row" data-search="<?php echo strtolower($policia['legajo'] . ' ' . $policia['cin'] . ' ' . $policia['nombre'] . ' ' . $policia['apellido'] . ' ' . $policia['grado_nombre'] . ' ' . ($policia['especialidad_nombre'] ?: '') . ' ' . $policia['cargo'] . ' ' . $policia['telefono'] . ' ' . $policia['region_nombre']); ?>">
-                                            <td class="searchable"><?php echo $policia['legajo']; ?></td>
-                                            <td class="searchable"><?php echo $policia['cin']; ?></td>
-                                            <td class="searchable"><?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?></td>
-                                            <td class="searchable"><?php echo $policia['grado_nombre']; ?></td>
-                                            <td class="searchable"><?php echo $policia['especialidad_nombre'] ?: 'N/A'; ?></td>
-                                            <td class="searchable"><?php echo $policia['cargo']; ?></td>
-                                            <td class="searchable"><?php echo $policia['telefono']; ?></td>
+                                        <?php while ($policia = $policias->fetch()): ?>
+                                        <tr class="policia-row" data-search="<?php echo strtolower($policia['legajo'] . ' ' . $policia['cin'] . ' ' . $policia['nombre'] . ' ' . $policia['apellido'] . ' ' . $policia['grado_nombre'] . ' ' . $policia['categoria_nombre'] . ' ' . $policia['telefono'] . ' ' . ($policia['lugar_guardia_nombre'] ?: '') . ' ' . $policia['region_nombre']); ?>">
+                                            <td class="searchable" style="font-size: 11px;"><?php echo $policia['legajo']; ?></td>
+                                            <td class="searchable" style="font-size: 11px;"><?php echo $policia['cin']; ?></td>
+                                            <td class="searchable" style="font-size: 11px;" title="<?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?>">
+                                                <?php 
+                                                $nombre_completo = $policia['apellido'] . ', ' . $policia['nombre'];
+                                                echo strlen($nombre_completo) > 25 ? substr($nombre_completo, 0, 22) . '...' : $nombre_completo;
+                                                ?>
+                                            </td>
+                                            <td class="searchable" style="font-size: 10px;" title="<?php echo $policia['grado_nombre']; ?>">
+                                                <?php echo $policia['grado_nombre']; ?>
+                                            </td>
+                                            <td class="searchable" style="font-size: 11px;"><?php echo $policia['telefono']; ?></td>
+                                            <td class="searchable" style="font-size: 10px;">
+                                                <?php if ($policia['lugar_guardia_nombre']): ?>
+                                                    <span class="badge bg-info" style="font-size: 9px; padding: 2px 4px;" title="<?php echo htmlspecialchars($policia['lugar_guardia_nombre']); ?>">
+                                                        <?php echo strlen($policia['lugar_guardia_nombre']) > 12 ? substr($policia['lugar_guardia_nombre'], 0, 9) . '...' : htmlspecialchars($policia['lugar_guardia_nombre']); ?>
+                                                    </span>
+                                                <?php else: ?>
+                                                    <span class="text-muted" style="font-size: 9px;">N/A</span>
+                                                <?php endif; ?>
+                                            </td>
+
                                             <td>
-                                                <span class="badge bg-<?php echo (strtoupper($policia['region_nombre']) == 'CENTRAL') ? 'primary' : 'secondary'; ?>">
-                                                    <?php echo htmlspecialchars($policia['region_nombre']); ?>
+                                                <span class="badge bg-<?php echo (strtoupper($policia['region_nombre']) == 'CENTRAL') ? 'primary' : 'secondary'; ?>" style="font-size: 9px; padding: 2px 4px;">
+                                                    <?php echo strtoupper($policia['region_nombre']) == 'CENTRAL' ? 'CENT' : 'REG'; ?>
                                                 </span>
                                             </td>
                                             <td>
                                                 <div class="btn-group" role="group">
-                                                    <a href="editar.php?id=<?php echo $policia['id']; ?>" class="btn btn-sm btn-outline-primary" title="Editar">
-                                                        <i class="fas fa-edit"></i>
+                                                    <a href="editar.php?id=<?php echo $policia['id']; ?>" class="btn btn-xs btn-outline-primary" style="padding: 2px 4px; font-size: 10px;" title="Editar">
+                                                        <i class="fas fa-edit" style="font-size: 10px;"></i>
                                                     </a>
-                                                    <a href="eliminar.php?id=<?php echo $policia['id']; ?>" class="btn btn-sm btn-outline-danger" title="Eliminar">
-                                                        <i class="fas fa-trash"></i>
+                                                    <a href="eliminar.php?id=<?php echo $policia['id']; ?>" class="btn btn-xs btn-outline-danger" style="padding: 2px 4px; font-size: 10px;" title="Eliminar">
+                                                        <i class="fas fa-trash" style="font-size: 10px;"></i>
                                                     </a>
-                                                    <button class="btn btn-sm btn-outline-info" title="Ver Detalles" onclick="verDetalles(<?php echo $policia['id']; ?>)">
-                                                        <i class="fas fa-eye"></i>
+                                                    <button class="btn btn-xs btn-outline-info" style="padding: 2px 4px; font-size: 10px;" title="Ver Detalles" onclick="verDetalles(<?php echo $policia['id']; ?>)">
+                                                        <i class="fas fa-eye" style="font-size: 10px;"></i>
                                                     </button>
                                                 </div>
                                             </td>
@@ -362,11 +422,10 @@ $policias = $conn->query("
                                 <select class="form-select" name="grado_id" required>
                                     <option value="">Seleccionar grado...</option>
                                     <?php 
-                                    $grados->data_seek(0);
-                                    while ($grado = $grados->fetch_assoc()): 
+                                    foreach ($grados as $grado): 
                                     ?>
                                     <option value="<?php echo $grado['id']; ?>"><?php echo $grado['nombre']; ?></option>
-                                    <?php endwhile; ?>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                             <div class="col-md-6 mb-3">
@@ -374,16 +433,11 @@ $policias = $conn->query("
                                 <select class="form-select" name="especialidad_id">
                                     <option value="">Seleccionar especialidad...</option>
                                     <?php 
-                                    $especialidades->data_seek(0);
-                                    while ($especialidad = $especialidades->fetch_assoc()): 
+                                    foreach ($especialidades as $especialidad): 
                                     ?>
                                     <option value="<?php echo $especialidad['id']; ?>"><?php echo $especialidad['nombre']; ?></option>
-                                    <?php endwhile; ?>
+                                    <?php endforeach; ?>
                                 </select>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Cargo</label>
-                                <input type="text" class="form-control" name="cargo">
                             </div>
                             <div class="col-md-12 mb-3">
                                 <label class="form-label">Comisionamiento</label>
@@ -398,13 +452,12 @@ $policias = $conn->query("
                                 <select class="form-select" name="region_id" required>
                                     <option value="">Seleccionar región...</option>
                                     <?php 
-                                    if ($regiones->num_rows > 0) {
-                                        $regiones->data_seek(0);
-                                        while ($region = $regiones->fetch_assoc()): 
+                                    if ($regiones->rowCount() > 0) {
+                                        foreach ($regiones as $region): 
                                     ?>
                                     <option value="<?php echo $region['id']; ?>"><?php echo htmlspecialchars($region['nombre']); ?></option>
                                     <?php 
-                                        endwhile; 
+                                        endforeach; 
                                     }
                                     ?>
                                 </select>
@@ -414,11 +467,10 @@ $policias = $conn->query("
                                 <select class="form-select" name="lugar_guardia_id">
                                     <option value="">Seleccionar lugar...</option>
                                     <?php 
-                                    $lugares_guardias->data_seek(0);
-                                    while ($lugar = $lugares_guardias->fetch_assoc()): 
+                                    foreach ($lugares_guardias as $lugar): 
                                     ?>
                                     <option value="<?php echo $lugar['id']; ?>"><?php echo $lugar['nombre']; ?></option>
-                                    <?php endwhile; ?>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                             <div class="col-md-4 mb-3">
@@ -452,138 +504,145 @@ $policias = $conn->query("
     </div>
 
     <script>
-        // Variables globales
-        let allRows = [];
-        let filteredRows = [];
-        
         // Inicializar cuando el DOM esté listo
         document.addEventListener('DOMContentLoaded', function() {
-            // Guardar todas las filas originales
-            allRows = Array.from(document.querySelectorAll('.policia-row'));
-            filteredRows = [...allRows];
-            
             // Event listeners para los filtros
             document.getElementById('filtroRegion').addEventListener('change', aplicarFiltros);
-            document.getElementById('filtroGrado').addEventListener('change', aplicarFiltros);
+            document.getElementById('filtroCategoria').addEventListener('change', aplicarFiltros);
+            document.getElementById('filtroTipoGrado').addEventListener('change', aplicarFiltros);
+            document.getElementById('filtroLugarGuardia').addEventListener('change', aplicarFiltros);
             document.getElementById('limpiarFiltros').addEventListener('click', limpiarFiltros);
             
-            // Funcionalidad del buscador existente (mejorada)
-            const searchInput = document.getElementById('searchInput');
-            const clearButton = document.getElementById('clearSearch');
-            const searchInfo = document.getElementById('searchInfo');
+            // Event listeners para el buscador
+            const buscarInput = document.getElementById('buscarPersonal');
+            const limpiarBusqueda = document.getElementById('limpiarBusqueda');
             
-            searchInput.addEventListener('input', function() {
-                const searchTerm = this.value.toLowerCase().trim();
-                
-                if (searchTerm.length > 0) {
-                    clearButton.style.display = 'block';
-                    buscarEnFilasVisibles(searchTerm);
+            buscarInput.addEventListener('input', function() {
+                aplicarFiltros();
+                // Mostrar/ocultar botón de limpiar búsqueda
+                if (this.value.length > 0) {
+                    limpiarBusqueda.style.display = 'block';
                 } else {
-                    clearButton.style.display = 'none';
-                    mostrarFilas(filteredRows);
-                    searchInfo.textContent = '';
+                    limpiarBusqueda.style.display = 'none';
                 }
             });
             
-            clearButton.addEventListener('click', function() {
-                searchInput.value = '';
+            limpiarBusqueda.addEventListener('click', function() {
+                buscarInput.value = '';
                 this.style.display = 'none';
-                mostrarFilas(filteredRows);
-                searchInfo.textContent = '';
-                searchInput.focus();
+                aplicarFiltros();
             });
         });
         
         // Función para aplicar filtros
         function aplicarFiltros() {
-            const regionSeleccionada = document.getElementById('filtroRegion').value;
-            const gradoSeleccionado = document.getElementById('filtroGrado').value;
+            const textoBusqueda = document.getElementById('buscarPersonal').value.toLowerCase();
+            const regionSeleccionada = document.getElementById('filtroRegion').value.toLowerCase();
+            const categoriaSeleccionada = document.getElementById('filtroCategoria').value.toLowerCase();
+            const tipoGradoSeleccionado = document.getElementById('filtroTipoGrado').value.toLowerCase();
+            const lugarGuardiaSeleccionado = document.getElementById('filtroLugarGuardia').value.toLowerCase();
             
-            filteredRows = allRows.filter(row => {
-                const regionRow = row.querySelector('td:nth-child(8) .badge').textContent.trim();
-                const gradoRow = row.querySelector('td:nth-child(4)').textContent.trim();
+            const filas = document.querySelectorAll('.policia-row');
+            let filasVisibles = 0;
+            
+            filas.forEach(function(fila) {
+                const datosCompletos = fila.getAttribute('data-search');
+                let mostrar = true;
                 
-                const cumpleRegion = !regionSeleccionada || regionRow === regionSeleccionada;
-                const cumpleGrado = !gradoSeleccionado || gradoRow === gradoSeleccionado;
+                // Filtro por texto de búsqueda
+                if (textoBusqueda && !datosCompletos.includes(textoBusqueda)) {
+                    mostrar = false;
+                }
                 
-                return cumpleRegion && cumpleGrado;
+                // Filtro por región
+                if (regionSeleccionada && !datosCompletos.includes(regionSeleccionada)) {
+                    mostrar = false;
+                }
+                
+                // Filtro por categoría
+                if (categoriaSeleccionada && !datosCompletos.includes(categoriaSeleccionada)) {
+                    mostrar = false;
+                }
+                
+                // Filtro por tipo de grado específico
+                if (tipoGradoSeleccionado && !datosCompletos.includes(tipoGradoSeleccionado)) {
+                    mostrar = false;
+                }
+                
+                // Filtro por lugar de guardia
+                if (lugarGuardiaSeleccionado && !datosCompletos.includes(lugarGuardiaSeleccionado)) {
+                    mostrar = false;
+                }
+                
+                if (mostrar) {
+                    fila.style.display = '';
+                    filasVisibles++;
+                } else {
+                    fila.style.display = 'none';
+                }
             });
-            
-            // Limpiar búsqueda al aplicar filtros
-            document.getElementById('searchInput').value = '';
-            document.getElementById('clearSearch').style.display = 'none';
-            
-            mostrarFilas(filteredRows);
-            actualizarInfoFiltros();
-        }
-        
-        // Función para buscar en filas visibles
-        function buscarEnFilasVisibles(searchTerm) {
-            const resultados = filteredRows.filter(row => {
-                const searchData = row.getAttribute('data-search');
-                return searchData.includes(searchTerm);
-            });
-            
-            mostrarFilas(resultados);
             
             // Actualizar información de búsqueda
-            const searchInfo = document.getElementById('searchInfo');
-            if (resultados.length === 0) {
-                searchInfo.textContent = 'No se encontraron resultados';
-            } else {
-                searchInfo.textContent = `${resultados.length} resultado(s) encontrado(s)`;
-            }
-        }
-        
-        // Función para mostrar filas específicas
-        function mostrarFilas(filasAMostrar) {
-            const tbody = document.getElementById('policiasTableBody');
+            actualizarInfoBusqueda(filasVisibles, textoBusqueda);
+            
+            // Mostrar/ocultar mensaje de "no hay resultados"
             const noResults = document.getElementById('noResults');
-            
-            // Ocultar todas las filas
-            allRows.forEach(row => row.style.display = 'none');
-            
-            if (filasAMostrar.length === 0) {
+            if (filasVisibles === 0) {
                 noResults.style.display = 'block';
             } else {
                 noResults.style.display = 'none';
-                filasAMostrar.forEach(row => row.style.display = '');
+            }
+        }
+        
+        // Función para actualizar información de búsqueda
+        function actualizarInfoBusqueda(filasVisibles, textoBusqueda) {
+            const searchInfo = document.getElementById('searchInfo');
+            const totalFilas = document.querySelectorAll('.policia-row').length;
+            
+            if (textoBusqueda || 
+                document.getElementById('filtroRegion').value ||
+                document.getElementById('filtroCategoria').value ||
+                document.getElementById('filtroTipoGrado').value ||
+                document.getElementById('filtroLugarGuardia').value) {
+                
+                searchInfo.style.display = 'block';
+                if (textoBusqueda) {
+                    searchInfo.innerHTML = `Mostrando ${filasVisibles} de ${totalFilas} policías que coinciden con "${textoBusqueda}"`;
+                } else {
+                    searchInfo.innerHTML = `Mostrando ${filasVisibles} de ${totalFilas} policías filtrados`;
+                }
+            } else {
+                searchInfo.style.display = 'none';
             }
         }
         
         // Función para limpiar filtros
         function limpiarFiltros() {
+            document.getElementById('buscarPersonal').value = '';
             document.getElementById('filtroRegion').value = '';
-            document.getElementById('filtroGrado').value = '';
-            document.getElementById('searchInput').value = '';
-            document.getElementById('clearSearch').style.display = 'none';
+            document.getElementById('filtroCategoria').value = '';
+            document.getElementById('filtroTipoGrado').value = '';
+            document.getElementById('filtroLugarGuardia').value = '';
+            document.getElementById('limpiarBusqueda').style.display = 'none';
             
-            filteredRows = [...allRows];
-            mostrarFilas(filteredRows);
+            // Mostrar todas las filas
+            const filas = document.querySelectorAll('.policia-row');
+            filas.forEach(function(fila) {
+                fila.style.display = '';
+            });
             
-            document.getElementById('searchInfo').textContent = '';
-            actualizarInfoFiltros();
+            // Ocultar mensaje de "no hay resultados" e información de búsqueda
+            document.getElementById('noResults').style.display = 'none';
+            document.getElementById('searchInfo').style.display = 'none';
         }
         
-        // Función para actualizar información de filtros
-        function actualizarInfoFiltros() {
-            const searchInfo = document.getElementById('searchInfo');
-            const totalVisible = filteredRows.length;
-            const totalGeneral = allRows.length;
-            
-            if (totalVisible < totalGeneral) {
-                searchInfo.textContent = `Mostrando ${totalVisible} de ${totalGeneral} policías`;
-            } else {
-                searchInfo.textContent = '';
-            }
-        }
-        
-        // Función existente para ver detalles
+        // Función para ver detalles
         function verDetalles(id) {
-            // Implementar según necesidades
-            alert('Ver detalles del policía ID: ' + id);
+            window.location.href = 'ver_detalles.php?id=' + id;
         }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+
+   

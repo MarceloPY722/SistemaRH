@@ -9,64 +9,115 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../cnx/db_connect.php';
 
-// Obtener estadísticas
-$total_policias = $conn->query("SELECT COUNT(*) as total FROM policias WHERE activo = 1")->fetch_assoc()['total'];
-$total_servicios = $conn->query("SELECT COUNT(*) as total FROM servicios WHERE estado = 'PROGRAMADO'")->fetch_assoc()['total'];
-$total_ausencias = $conn->query("SELECT COUNT(*) as total FROM ausencias WHERE estado = 'PENDIENTE'")->fetch_assoc()['total'];
-$total_guardias = $conn->query("SELECT COUNT(*) as total FROM lista_guardias")->fetch_assoc()['total'];
+// Procesar completar ausencias
+if ($_POST && isset($_POST['action'])) {
+    if ($_POST['action'] == 'completar') {
+        $ausencia_id = $_POST['ausencia_id'];
+        $policia_id = isset($_POST['policia_id']) ? $_POST['policia_id'] : null;
+        
+        // Verificar que la ausencia esté en estado APROBADA
+        $stmt_verificar = $conn->prepare("SELECT estado, policia_id FROM ausencias WHERE id = ?");
+        $stmt_verificar->execute([$ausencia_id]);
+        $resultado = $stmt_verificar->fetch();
+        
+        if ($resultado && $resultado['estado'] == 'APROBADA') {
+            $policia_id = $resultado['policia_id'];
+            
+            $sql = "UPDATE ausencias SET estado = 'COMPLETADA' WHERE id = ?";
+            $stmt = $conn->prepare($sql);
+            
+            if ($stmt->execute([$ausencia_id])) {
+                // Verificar si el policía tiene otras ausencias activas
+                $stmt_check_otras = $conn->prepare("SELECT COUNT(*) as count FROM ausencias WHERE policia_id = ? AND estado = 'APROBADA' AND id != ? AND (fecha_fin IS NULL OR fecha_fin >= CURDATE()) AND fecha_inicio <= CURDATE()");
+                $stmt_check_otras->execute([$policia_id, $ausencia_id]);
+                $otras_ausencias = $stmt_check_otras->fetch()['count'];
+                
+                // Si no tiene otras ausencias activas, restaurar estado a DISPONIBLE
+                if ($otras_ausencias == 0) {
+                    $stmt_restore_estado = $conn->prepare("UPDATE policias SET estado = 'DISPONIBLE' WHERE id = ?");
+                    $stmt_restore_estado->execute([$policia_id]);
+                }
+                
+                // Restaurar lugar de guardia original si hay intercambio activo
+                $stmt_check = $conn->prepare("SELECT lugar_original_id, lugar_intercambio_id FROM intercambios_guardias WHERE policia_id = ? AND ausencia_id = ? AND activo = 1");
+                $stmt_check->execute([$policia_id, $ausencia_id]);
+                $intercambio = $stmt_check->fetch();
+                
+                if ($intercambio) {
+                   
+                    $stmt_restore = $conn->prepare("UPDATE policias SET lugar_guardia_id = ?, lugar_guardia_reserva_id = ? WHERE id = ?");
+                    $stmt_restore->execute([$intercambio['lugar_original_id'], $intercambio['lugar_intercambio_id'], $policia_id]);
+                    
+                    $stmt_deactivate = $conn->prepare("UPDATE intercambios_guardias SET activo = 0, fecha_restauracion = NOW() WHERE policia_id = ? AND ausencia_id = ?");
+                    $stmt_deactivate->execute([$policia_id, $ausencia_id]);
+                    
+                    $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle'></i> Ausencia completada y lugar de guardia restaurado exitosamente. Estado del policía actualizado.</div>";
+                } else {
+                    $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle'></i> Ausencia completada exitosamente. Estado del policía actualizado.</div>";
+                }
+                
+                try {
+                    $stmt_restore_pos = $conn->prepare("CALL RestaurarPosicionPorLegajo(?)");
+                    $stmt_restore_pos->execute([$policia_id]);
+                } catch (Exception $e) {
+                    // Si no existe el procedimiento, reorganizar toda la lista
+                    try {
+                        $stmt_reorg = $conn->prepare("CALL ReorganizarListaGuardias()");
+                        $stmt_reorg->execute();
+                    } catch (Exception $e2) {
+                        // Silenciar error si los procedimientos no existen
+                    }
+                }
+            } else {
+                $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al completar ausencia: " . $conn->error . "</div>";
+            }
+        } else {
+            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Solo se pueden completar ausencias que estén en estado APROBADA</div>";
+        }
 
-// Obtener ausencias activas (APROBADA y PENDIENTE)
+        
+        // Recargar la página para mostrar los cambios
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit();
+    }
+}
+
+// Obtener estadísticas
+$total_policias = $conn->query("SELECT COUNT(*) as total FROM policias WHERE activo = 1")->fetch()['total'];
+$total_servicios = $conn->query("SELECT COUNT(*) as total FROM servicios WHERE estado = 'PROGRAMADO'")->fetch()['total'];
+$total_ausencias = $conn->query("SELECT COUNT(*) as total FROM ausencias WHERE estado = 'PENDIENTE'")->fetch()['total'];
+$total_guardias = $conn->query("SELECT COUNT(*) as total FROM lista_guardias")->fetch()['total'];
+
+// Obtener ausencias activas (excluyendo Junta Médica)
 $ausencias_activas = $conn->query("
-    SELECT a.id, a.fecha_inicio, a.fecha_fin, a.estado, a.descripcion,
-           p.nombre, p.apellido, p.cin, tg.nombre as grado, ta.nombre as tipo_ausencia
+    SELECT 
+        a.id, 
+        a.fecha_inicio, 
+        a.fecha_fin, 
+        a.estado, 
+        a.descripcion,
+        p.id as policia_id,
+        p.nombre, 
+        p.apellido, 
+        p.cin, 
+        p.legajo,
+        tg.nombre as grado, 
+        ta.nombre as tipo_ausencia,
+        DATEDIFF(COALESCE(a.fecha_fin, CURDATE()), a.fecha_inicio) + 1 as dias_ausencia,
+        CASE 
+            WHEN a.fecha_fin IS NULL THEN 'Indefinida'
+            WHEN a.fecha_fin < CURDATE() THEN 'Vencida'
+            WHEN a.fecha_fin = CURDATE() THEN 'Termina hoy'
+            ELSE CONCAT(DATEDIFF(a.fecha_fin, CURDATE()), ' días restantes')
+        END as tiempo_restante
     FROM ausencias a
     JOIN policias p ON a.policia_id = p.id
     LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
-    LEFT JOIN grados g ON tg.grado_id = g.id
-    LEFT JOIN grados g ON tg.grado_id = g.id
     JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id
-    WHERE a.estado IN ('APROBADA', 'PENDIENTE')
+    WHERE a.estado IN ('APROBADA', 'PENDIENTE') AND ta.nombre != 'Junta Medica'
     ORDER BY a.fecha_inicio ASC
     LIMIT 10
 ");
-
-// Procesar completar ausencias
-if ($_POST && isset($_POST['action']) && $_POST['action'] == 'completar') {
-    $ausencia_id = $_POST['ausencia_id'];
-    
-    // Verificar que la ausencia esté en estado APROBADA
-    $stmt_verificar = $conn->prepare("SELECT estado FROM ausencias WHERE id = ?");
-    $stmt_verificar->bind_param("i", $ausencia_id);
-    $stmt_verificar->execute();
-    $resultado = $stmt_verificar->get_result()->fetch_assoc();
-    
-    if ($resultado && $resultado['estado'] == 'APROBADA') {
-        $sql = "UPDATE ausencias SET estado = 'COMPLETADA' WHERE id = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $ausencia_id);
-        
-        if ($stmt->execute()) {
-            // Reinicializar la cola FIFO para actualizar disponibilidad
-            try {
-                $stmt_fifo = $conn->prepare("CALL InicializarColaFIFO()");
-                $stmt_fifo->execute();
-                $stmt_fifo->close();
-                $mensaje = "<div class='alert alert-success'>Ausencia completada exitosamente. La disponibilidad del policía ha sido actualizada.</div>";
-            } catch (Exception $e) {
-                $mensaje = "<div class='alert alert-warning'>Ausencia completada, pero hubo un error al actualizar la cola de guardias: " . $e->getMessage() . "</div>";
-            }
-        } else {
-            $mensaje = "<div class='alert alert-danger'>Error al completar ausencia: " . $conn->error . "</div>";
-        }
-    } else {
-        $mensaje = "<div class='alert alert-danger'>Solo se pueden completar ausencias que estén en estado APROBADA</div>";
-    }
-    $stmt_verificar->close();
-    
-    // Recargar la página para mostrar los cambios
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit();
-}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -114,6 +165,35 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'completar') {
             color: #104c75;
             font-weight: 600;
             margin-bottom: 30px;
+        }
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .status-normal {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .status-intercambiado {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+        .btn-intercambio {
+            background: linear-gradient(45deg, #ff9800, #f57c00);
+            border: none;
+            color: white;
+            font-size: 11px;
+            padding: 4px 8px;
+        }
+        .btn-intercambio:hover {
+            background: linear-gradient(45deg, #f57c00, #ff9800);
+            color: white;
+        }
+        .lugar-info {
+            font-size: 10px;
+            color: #666;
         }
     </style>
 </head>
@@ -172,7 +252,6 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'completar') {
                         </div>
                     </div>
 
-                    <!-- Acciones Rápidas -->
                     <div class="row">
                         <div class="col-md-6 mb-4">
                             <div class="card">
@@ -187,6 +266,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'completar') {
                                         <a href="ausencias/agregar_ausencia.php" class="btn btn-outline-warning">
                                             <i class="fas fa-user-times"></i> Registrar Ausencia
                                         </a>
+                                        
                                     </div>
                                 </div>
                             </div>
@@ -198,15 +278,15 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'completar') {
                                     <h5><i class="fas fa-user-clock"></i> Ausencias Activas</h5>
                                 </div>
                                 <div class="card-body p-0">
-                                    <?php if ($ausencias_activas->num_rows > 0): ?>
+                                    <?php if ($ausencias_activas->rowCount() > 0): ?>
                                     <div class="table-responsive">
                                         <table class="table table-sm mb-0">
                                             <tbody>
-                                                <?php while ($ausencia = $ausencias_activas->fetch_assoc()): ?>
+                                                <?php while ($ausencia = $ausencias_activas->fetch()): ?>
                                                 <tr>
                                                     <td class="py-2">
-                                                        <div class="d-flex justify-content-between align-items-center">
-                                                            <div>
+                                                        <div class="d-flex justify-content-between align-items-start">
+                                                            <div class="flex-grow-1">
                                                                 <strong><?php echo $ausencia['grado'] . ' ' . $ausencia['apellido'] . ', ' . $ausencia['nombre']; ?></strong>
                                                                 <br>
                                                                 <small class="text-muted">
@@ -217,6 +297,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'completar') {
                                                                     <?php else: ?>
                                                                         - Indefinida
                                                                     <?php endif; ?>
+                                                                    <span class="ms-2 badge bg-info"><?php echo $ausencia['tiempo_restante']; ?></span>
                                                                 </small>
                                                                 <br>
                                                                 <span class="badge bg-<?php 
@@ -226,18 +307,21 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'completar') {
                                                                     <?php echo $ausencia['estado']; ?>
                                                                 </span>
                                                                 <small class="text-muted ms-1"><?php echo $ausencia['tipo_ausencia']; ?></small>
+                                                                
+
                                                             </div>
                                                             <div class="btn-group-vertical" role="group">
                                                                 <?php if ($ausencia['estado'] == 'APROBADA'): ?>
-                                                                <form method="POST" style="display: inline;" class="mb-1">
-                                                                    <input type="hidden" name="action" value="completar">
-                                                                    <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
-                                                                    <button type="submit" class="btn btn-sm btn-success" 
-                                                                            onclick="return confirm('¿Marcar como completada?')" 
-                                                                            title="Completar ausencia">
-                                                                        <i class="fas fa-check"></i>
-                                                                    </button>
-                                                                </form>
+                                                                    <form method="POST" style="display: inline;" class="mb-1">
+                                                                        <input type="hidden" name="action" value="completar">
+                                                                        <input type="hidden" name="ausencia_id" value="<?php echo $ausencia['id']; ?>">
+                                                                        <input type="hidden" name="policia_id" value="<?php echo $ausencia['policia_id']; ?>">
+                                                                        <button type="submit" class="btn btn-sm btn-success" 
+                                                                                onclick="return confirm('¿Marcar como completada?')" 
+                                                                                title="Completar ausencia">
+                                                                            <i class="fas fa-check"></i>
+                                                                        </button>
+                                                                    </form>
                                                                 <?php endif; ?>
                                                                 <a href="ausencias/index.php" class="btn btn-sm btn-outline-primary" title="Ver/Editar">
                                                                     <i class="fas fa-edit"></i>

@@ -85,6 +85,7 @@ try {
         JOIN grados g ON p.grado_id = g.id
         JOIN regiones r ON p.region_id = r.id
         WHERE p.activo = TRUE 
+        AND p.estado = 'DISPONIBLE'
         AND p.lugar_guardia_id = ?
     ";
     
@@ -111,12 +112,10 @@ try {
     $params[] = (int)$limite;
     
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param(str_repeat('s', count($params) - 1) . 'i', ...$params);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $stmt->execute($params);
     
     $policias = [];
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $policias[] = $row;
     }
     

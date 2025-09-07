@@ -18,17 +18,17 @@ if ($policia_id <= 0) {
 
 // Obtener datos del policía
 $stmt = $conn->prepare("
-    SELECT p.*, g.nombre as grado_nombre, e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre
+    SELECT p.*, tg.nombre as grado_nombre, g.nombre as categoria_nombre, e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre
     FROM policias p
-    LEFT JOIN grados g ON p.grado_id = g.id
+    LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+    LEFT JOIN grados g ON tg.grado_id = g.id
     LEFT JOIN especialidades e ON p.especialidad_id = e.id
     LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
     LEFT JOIN regiones r ON p.region_id = r.id
     WHERE p.id = ? AND p.activo = 1
 ");
-$stmt->bind_param("i", $policia_id);
-$stmt->execute();
-$policia = $stmt->get_result()->fetch_assoc();
+$stmt->execute([$policia_id]);
+$policia = $stmt->fetch();
 
 if (!$policia) {
     header("Location: index.php");
@@ -40,36 +40,32 @@ $dependencias = [];
 
 // Verificar ausencias
 $ausencias = $conn->prepare("SELECT COUNT(*) as total FROM ausencias WHERE policia_id = ?");
-$ausencias->bind_param("i", $policia_id);
-$ausencias->execute();
-$total_ausencias = $ausencias->get_result()->fetch_assoc()['total'];
+$ausencias->execute([$policia_id]);
+$total_ausencias = $ausencias->fetch()['total'];
 if ($total_ausencias > 0) {
     $dependencias[] = "$total_ausencias ausencia(s) registrada(s)";
 }
 
 // Verificar asignaciones de servicios
 $servicios = $conn->prepare("SELECT COUNT(*) as total FROM asignaciones_servicios WHERE policia_id = ?");
-$servicios->bind_param("i", $policia_id);
-$servicios->execute();
-$total_servicios = $servicios->get_result()->fetch_assoc()['total'];
+$servicios->execute([$policia_id]);
+$total_servicios = $servicios->fetch()['total'];
 if ($total_servicios > 0) {
     $dependencias[] = "$total_servicios asignación(es) de servicio";
 }
 
 // Verificar guardias realizadas
 $guardias = $conn->prepare("SELECT COUNT(*) as total FROM guardias_realizadas WHERE policia_id = ?");
-$guardias->bind_param("i", $policia_id);
-$guardias->execute();
-$total_guardias = $guardias->get_result()->fetch_assoc()['total'];
+$guardias->execute([$policia_id]);
+$total_guardias = $guardias->fetch()['total'];
 if ($total_guardias > 0) {
     $dependencias[] = "$total_guardias guardia(s) realizada(s)";
 }
 
 // Verificar lista de guardias
 $lista_guardias = $conn->prepare("SELECT COUNT(*) as total FROM lista_guardias WHERE policia_id = ?");
-$lista_guardias->bind_param("i", $policia_id);
-$lista_guardias->execute();
-$total_lista = $lista_guardias->get_result()->fetch_assoc()['total'];
+$lista_guardias->execute([$policia_id]);
+$total_lista = $lista_guardias->fetch()['total'];
 if ($total_lista > 0) {
     $dependencias[] = "Está en la lista de guardias";
 }
@@ -82,28 +78,26 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'eliminar') {
         // Eliminación lógica (marcar como inactivo)
         $sql = "UPDATE policias SET activo = 0 WHERE id = ?";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $policia_id);
         
-        if ($stmt->execute()) {
+        if ($stmt->execute([$policia_id])) {
             // También remover de lista de guardias
             $conn->prepare("DELETE FROM lista_guardias WHERE policia_id = ?")->execute([$policia_id]);
             
             $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle'></i> Policía desactivado exitosamente. Los registros históricos se mantienen.</div>";
             $policia['activo'] = 0;
         } else {
-            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al desactivar policía: " . $conn->error . "</div>";
+            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al desactivar policía: " . $stmt->errorInfo()[2] . "</div>";
         }
     } elseif ($tipo_eliminacion == 'fisica' && empty($dependencias)) {
         // Eliminación física (solo si no hay dependencias)
         $sql = "DELETE FROM policias WHERE id = ?";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $policia_id);
         
-        if ($stmt->execute()) {
+        if ($stmt->execute([$policia_id])) {
             header("Location: index.php?mensaje=eliminado");
             exit();
         } else {
-            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al eliminar policía: " . $conn->error . "</div>";
+            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al eliminar policía: " . $stmt->errorInfo()[2] . "</div>";
         }
     }
 }

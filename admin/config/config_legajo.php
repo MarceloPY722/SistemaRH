@@ -18,21 +18,18 @@ if ($_POST && isset($_POST['action'])) {
         
         // Verificar que el nuevo legajo no esté en uso
         $check_legajo = $conn->prepare("SELECT id FROM policias WHERE legajo = ? AND id != ?");
-        $check_legajo->bind_param("ii", $nuevo_legajo, $policia_id);
-        $check_legajo->execute();
-        $result_check = $check_legajo->get_result();
+        $check_legajo->execute([$nuevo_legajo, $policia_id]);
         
-        if ($result_check->num_rows > 0) {
+        if ($check_legajo->rowCount() > 0) {
             $mensaje = "<div class='alert alert-danger'>Error: El legajo $nuevo_legajo ya está en uso por otro policía.</div>";
         } else {
             // Actualizar el legajo
             $update_stmt = $conn->prepare("UPDATE policias SET legajo = ? WHERE id = ?");
-            $update_stmt->bind_param("ii", $nuevo_legajo, $policia_id);
             
-            if ($update_stmt->execute()) {
+            if ($update_stmt->execute([$nuevo_legajo, $policia_id])) {
                 $mensaje = "<div class='alert alert-success'>Legajo actualizado exitosamente.</div>";
             } else {
-                $mensaje = "<div class='alert alert-danger'>Error al actualizar el legajo: " . $conn->error . "</div>";
+                $mensaje = "<div class='alert alert-danger'>Error al actualizar el legajo.</div>";
             }
         }
     } elseif ($_POST['action'] == 'intercambiar_legajos') {
@@ -43,37 +40,28 @@ if ($_POST && isset($_POST['action'])) {
         if ($policia1_id == $policia2_id) {
             $mensaje = "<div class='alert alert-danger'>Error: No se puede intercambiar el legajo de un policía consigo mismo.</div>";
         } else {
-            // Obtener los legajos actuales
             $get_legajos = $conn->prepare("SELECT id, legajo FROM policias WHERE id IN (?, ?)");
-            $get_legajos->bind_param("ii", $policia1_id, $policia2_id);
-            $get_legajos->execute();
-            $result_legajos = $get_legajos->get_result();
+            $get_legajos->execute([$policia1_id, $policia2_id]);
             
-            if ($result_legajos->num_rows == 2) {
+            if ($get_legajos->rowCount() == 2) {
                 $legajos = [];
-                while ($row = $result_legajos->fetch_assoc()) {
+                while ($row = $get_legajos->fetch(PDO::FETCH_ASSOC)) {
                     $legajos[$row['id']] = $row['legajo'];
                 }
-                
                 $conn->begin_transaction();
-                
                 try {
                     $temp_legajo_query = $conn->prepare("SELECT MAX(legajo) + 1000 as temp_legajo FROM policias");
                     $temp_legajo_query->execute();
-                    $temp_result = $temp_legajo_query->get_result();
-                    $temp_legajo = $temp_result->fetch_assoc()['temp_legajo'];
-                    
+                    $temp_legajo = $temp_legajo_query->fetch(PDO::FETCH_ASSOC)['temp_legajo'];
+                
                     $update_temp = $conn->prepare("UPDATE policias SET legajo = ? WHERE id = ?");
-                    $update_temp->bind_param("ii", $temp_legajo, $policia1_id);
-                    $update_temp->execute();
+                    $update_temp->execute([$temp_legajo, $policia1_id]);
                     
                     $update1 = $conn->prepare("UPDATE policias SET legajo = ? WHERE id = ?");
-                    $update1->bind_param("ii", $legajos[$policia1_id], $policia2_id);
-                    $update1->execute();
+                    $update1->execute([$legajos[$policia1_id], $policia2_id]);
                     
                     $update2 = $conn->prepare("UPDATE policias SET legajo = ? WHERE id = ?");
-                    $update2->bind_param("ii", $legajos[$policia2_id], $policia1_id);
-                    $update2->execute();
+                    $update2->execute([$legajos[$policia2_id], $policia1_id]);
                     
                     $conn->commit();
                     $mensaje = "<div class='alert alert-success'>Legajos intercambiados exitosamente. El policía 1 ahora tiene el legajo {$legajos[$policia2_id]} y el policía 2 tiene el legajo {$legajos[$policia1_id]}.</div>";
@@ -88,22 +76,23 @@ if ($_POST && isset($_POST['action'])) {
     }
 }
 
-// Obtener lista de policías
-$policias_sql = "SELECT p.id, p.legajo, p.nombre, p.apellido, g.nombre as grado 
+$policias_sql = "SELECT p.id, p.legajo, p.nombre, p.apellido, tg.nombre as grado 
                  FROM policias p 
-                 LEFT JOIN grados g ON p.grado_id = g.id 
+                 LEFT JOIN tipo_grados tg ON p.grado_id = tg.id 
+                 LEFT JOIN grados g ON tg.grado_id = g.id 
                  ORDER BY p.legajo ASC";
-$policias_result = $conn->query($policias_sql);
+$policias_result = $conn->prepare($policias_sql);
+$policias_result->execute();
 
-// Obtener estadísticas
 $stats_sql = "SELECT 
                 COUNT(*) as total_policias,
                 MIN(legajo) as legajo_min,
                 MAX(legajo) as legajo_max,
                 COUNT(DISTINCT legajo) as legajos_unicos
               FROM policias";
-$stats_result = $conn->query($stats_sql);
-$stats = $stats_result->fetch_assoc();
+$stats_result = $conn->prepare($stats_sql);
+$stats_result->execute();
+$stats = $stats_result->fetch(PDO::FETCH_ASSOC);
 
 $gaps_sql = "WITH RECURSIVE secuencia AS (
     SELECT 1 as numero
@@ -130,7 +119,8 @@ FROM secuencia s
 LEFT JOIN policias p ON s.numero = p.legajo
 WHERE p.legajo IS NULL
 ORDER BY s.numero";
-$gaps_result = $conn->query($gaps_sql);
+$gaps_result = $conn->prepare($gaps_sql);
+$gaps_result->execute();
 ?>
 
 <!DOCTYPE html>
@@ -210,8 +200,9 @@ $gaps_result = $conn->query($gaps_sql);
                                                     <select name="policia1_id" class="form-select" required>
                                                         <option value="">Seleccione el primer policía...</option>
                                                         <?php 
-                                                        $policias_result->data_seek(0);
-                                                        while ($policia = $policias_result->fetch_assoc()): 
+                                                        $policias_select1 = $conn->prepare($policias_sql);
+                                                        $policias_select1->execute();
+                                                        while ($policia = $policias_select1->fetch(PDO::FETCH_ASSOC)): 
                                                         ?>
                                                             <option value="<?php echo $policia['id']; ?>">
                                                                 Legajo <?php echo $policia['legajo']; ?> - <?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?>
@@ -224,8 +215,9 @@ $gaps_result = $conn->query($gaps_sql);
                                                     <select name="policia2_id" class="form-select" required>
                                                         <option value="">Seleccione el segundo policía...</option>
                                                         <?php 
-                                                        $policias_result->data_seek(0);
-                                                        while ($policia = $policias_result->fetch_assoc()): 
+                                                        $policias_select2 = $conn->prepare($policias_sql);
+                                                        $policias_select2->execute();
+                                                        while ($policia = $policias_select2->fetch(PDO::FETCH_ASSOC)): 
                                                         ?>
                                                             <option value="<?php echo $policia['id']; ?>">
                                                                 Legajo <?php echo $policia['legajo']; ?> - <?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?>
@@ -254,8 +246,9 @@ $gaps_result = $conn->query($gaps_sql);
                                                     <select name="policia_id" class="form-select" required>
                                                         <option value="">Seleccione un policía...</option>
                                                         <?php 
-                                                        $policias_result->data_seek(0);
-                                                        while ($policia = $policias_result->fetch_assoc()): 
+                                                        $policias_select3 = $conn->prepare($policias_sql);
+                                                        $policias_select3->execute();
+                                                        while ($policia = $policias_select3->fetch(PDO::FETCH_ASSOC)): 
                                                         ?>
                                                             <option value="<?php echo $policia['id']; ?>">
                                                                 Legajo <?php echo $policia['legajo']; ?> - <?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?>
@@ -277,15 +270,16 @@ $gaps_result = $conn->query($gaps_sql);
                             </div>
                             
                             <!-- Legajos faltantes en la secuencia -->
-                            <?php if ($gaps_result && $gaps_result->num_rows > 0): ?>
+                            <?php if ($gaps_result && $gaps_result->rowCount() > 0): ?>
                             <?php 
                                 // Procesar los gaps para agrupar rangos
-                                $gaps_result->data_seek(0);
+                                // En PDO no existe data_seek(), necesitamos obtener todos los resultados primero
+                                $gaps_data = $gaps_result->fetchAll(PDO::FETCH_ASSOC);
                                 $legajos_individuales = [];
                                 $rangos = [];
                                 $rango_actual = null;
                                 
-                                while ($gap = $gaps_result->fetch_assoc()) {
+                                foreach ($gaps_data as $gap) {
                                     if ($gap['tipo_gap'] == 'individual') {
                                         $legajos_individuales[] = $gap['legajo_faltante'];
                                     } elseif ($gap['tipo_gap'] == 'inicio_rango') {
@@ -336,7 +330,7 @@ $gaps_result = $conn->query($gaps_sql);
                                     <h5><i class="fas fa-list"></i> Lista de Policías y sus Legajos</h5>
                                 </div>
                                 <div class="card-body">
-                                    <?php if ($policias_result && $policias_result->num_rows > 0): ?>
+                                    <?php if ($policias_result && $policias_result->rowCount() > 0): ?>
                                         <div class="table-responsive">
                                             <table class="table table-striped table-hover">
                                                 <thead class="table-dark">
@@ -350,8 +344,7 @@ $gaps_result = $conn->query($gaps_sql);
                                                 </thead>
                                                 <tbody>
                                                     <?php 
-                                                    $policias_result->data_seek(0);
-                                                    while ($policia = $policias_result->fetch_assoc()): 
+                                                    while ($policia = $policias_result->fetch(PDO::FETCH_ASSOC)): 
                                                     ?>
                                                         <tr>
                                                             <td><span class="badge bg-primary"><?php echo $policia['legajo']; ?></span></td>

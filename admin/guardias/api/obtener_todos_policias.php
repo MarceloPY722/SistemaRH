@@ -49,16 +49,14 @@ if ($_POST && isset($_POST['lugar_id'])) {
             JOIN policias p ON lg.policia_id = p.id
             JOIN grados g ON p.grado_id = g.id
             JOIN regiones r ON p.region_id = r.id
-            WHERE p.activo = TRUE AND p.lugar_guardia_id = ?
+            WHERE p.activo = TRUE AND p.estado = 'DISPONIBLE' AND p.lugar_guardia_id = ?
             ORDER BY lg.posicion ASC
         ");
         
-        $stmt->bind_param("i", $lugar_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        $stmt->execute([$lugar_id]);
         
         $policias = [];
-        while ($row = $result->fetch_assoc()) {
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $policias[] = $row;
         }
         

@@ -16,14 +16,12 @@ if ($_POST) {
         
         $sql = "INSERT INTO usuarios (nombre_usuario, contraseña, nombre_completo, email, rol) VALUES (?, ?, ?, ?, ?)";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssss", $nombre_usuario, $contraseña_hash, $nombre_completo, $email, $rol);
         
-        if ($stmt->execute()) {
+        if ($stmt->execute([$nombre_usuario, $contraseña_hash, $nombre_completo, $email, $rol])) {
             $mensaje = "<div class='alert alert-success'>Usuario creado exitosamente</div>";
         } else {
-            $mensaje = "<div class='alert alert-danger'>Error al crear usuario: " . $conn->error . "</div>";
+            $mensaje = "<div class='alert alert-danger'>Error al crear usuario</div>";
         }
-        $stmt->close();
     } else {
         $mensaje = "<div class='alert alert-warning'>Por favor complete todos los campos obligatorios</div>";
     }

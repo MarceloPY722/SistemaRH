@@ -18,9 +18,8 @@ if ($policia_id <= 0) {
 
 // Obtener datos del policía con información de región
 $stmt = $conn->prepare("SELECT p.*, r.nombre as region_nombre FROM policias p LEFT JOIN regiones r ON p.region_id = r.id WHERE p.id = ? AND p.activo = 1");
-$stmt->bind_param("i", $policia_id);
-$stmt->execute();
-$policia = $stmt->get_result()->fetch_assoc();
+$stmt->execute([$policia_id]);
+$policia = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$policia) {
     header("Location: index.php");
@@ -28,10 +27,10 @@ if (!$policia) {
 }
 
 // Obtener grados, especialidades, regiones y lugares de guardia para los selectores del formulario
-$grados = $conn->query("SELECT * FROM grados ORDER BY nivel_jerarquia ASC");
-$especialidades = $conn->query("SELECT * FROM especialidades ORDER BY nombre ASC");
-$regiones = $conn->query("SELECT * FROM regiones ORDER BY nombre ASC");
-$lugares_guardias = $conn->query("SELECT * FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
+$grados = $conn->query("SELECT tg.*, g.nombre as categoria_nombre FROM tipo_grados tg JOIN grados g ON tg.grado_id = g.id ORDER BY g.nivel_jerarquia ASC, tg.nivel_jerarquia ASC")->fetchAll(PDO::FETCH_ASSOC);
+$especialidades = $conn->query("SELECT * FROM especialidades ORDER BY nombre ASC")->fetchAll(PDO::FETCH_ASSOC);
+$regiones = $conn->query("SELECT * FROM regiones ORDER BY nombre ASC")->fetchAll(PDO::FETCH_ASSOC);
+$lugares_guardias = $conn->query("SELECT * FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC")->fetchAll(PDO::FETCH_ASSOC);
 
 // Procesar formulario de actualización
 if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
@@ -47,6 +46,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
     $telefono = trim($_POST['telefono']);
     $region_id = !empty($_POST['region_id']) ? $_POST['region_id'] : null;
     $lugar_guardia_id = $_POST['lugar_guardia_id'] ?: null;
+
     $observaciones = trim($_POST['observaciones']);
 
 
@@ -59,34 +59,28 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
     } else {
         // Validar legajo único (excluyendo el registro actual)
         $check_legajo = $conn->prepare("SELECT id FROM policias WHERE legajo = ? AND id != ? AND activo = 1");
-        $check_legajo->bind_param("ii", $legajo, $policia_id);
-        $check_legajo->execute();
-        $result_legajo = $check_legajo->get_result();
+        $check_legajo->execute([$legajo, $policia_id]);
         
         // Validar CIN único (excluyendo el registro actual)
         $check_cin = $conn->prepare("SELECT id FROM policias WHERE cin = ? AND id != ? AND activo = 1");
-        $check_cin->bind_param("si", $cin, $policia_id);
-        $check_cin->execute();
-        $result_cin = $check_cin->get_result();
+        $check_cin->execute([$cin, $policia_id]);
         
-        if ($result_legajo->num_rows > 0) {
+        if ($check_legajo->rowCount() > 0) {
             $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> El legajo ya está registrado por otro policía</div>";
-        } elseif ($result_cin->num_rows > 0) {
+        } elseif ($check_cin->rowCount() > 0) {
             $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> El CIN ya está registrado por otro policía</div>";
         } else {
             $sql = "UPDATE policias SET legajo = ?, nombre = ?, apellido = ?, cin = ?, genero = ?, grado_id = ?, especialidad_id = ?, cargo = ?, comisionamiento = ?, telefono = ?, region_id = ?, lugar_guardia_id = ?, observaciones = ? WHERE id = ?";
             $stmt = $conn->prepare($sql);
-            $stmt->bind_param("issssiisssisii", $legajo, $nombre, $apellido, $cin, $genero, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region_id, $lugar_guardia_id, $observaciones, $policia_id);
             
-            if ($stmt->execute()) {
+            if ($stmt->execute([$legajo, $nombre, $apellido, $cin, $genero, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region_id, $lugar_guardia_id, $observaciones, $policia_id])) {
                 $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle'></i> Policía actualizado exitosamente</div>";
                 // Recargar datos del policía
                 $stmt = $conn->prepare("SELECT * FROM policias WHERE id = ?");
-                $stmt->bind_param("i", $policia_id);
-                $stmt->execute();
-                $policia = $stmt->get_result()->fetch_assoc();
+                $stmt->execute([$policia_id]);
+                $policia = $stmt->fetch(PDO::FETCH_ASSOC);
             } else {
-                $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al actualizar policía: " . $conn->error . "</div>";
+                $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al actualizar policía</div>";
             }
         }
     }
@@ -240,7 +234,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                         <div class="mb-3">
                                             <label for="telefono" class="form-label">Teléfono</label>
                                             <input type="tel" class="form-control" id="telefono" name="telefono" 
-                                                   value="<?php echo htmlspecialchars($policia['telefono']); ?>">
+                                                   value="<?php echo htmlspecialchars($policia['telefono'] ?? ''); ?>">
                                         </div>
                                     </div>
                                     
@@ -252,12 +246,12 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                             <label for="grado_id" class="form-label">Grado <span class="required">*</span></label>
                                             <select class="form-select" id="grado_id" name="grado_id" required>
                                                 <option value="">Seleccionar grado...</option>
-                                                <?php while ($grado = $grados->fetch_assoc()): ?>
+                                                <?php foreach ($grados as $grado): ?>
                                                     <option value="<?php echo $grado['id']; ?>" 
                                                             <?php echo ($policia['grado_id'] == $grado['id']) ? 'selected' : ''; ?>>
-                                                        <?php echo htmlspecialchars($grado['nombre']); ?>
+                                                        <?php echo htmlspecialchars($grado['categoria_nombre'] . ' - ' . $grado['nombre']); ?>
                                                     </option>
-                                                <?php endwhile; ?>
+                                                <?php endforeach; ?>
                                             </select>
                                         </div>
                                         
@@ -265,19 +259,19 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                             <label for="especialidad_id" class="form-label">Especialidad</label>
                                             <select class="form-select" id="especialidad_id" name="especialidad_id">
                                                 <option value="">Sin especialidad...</option>
-                                                <?php while ($especialidad = $especialidades->fetch_assoc()): ?>
+                                                <?php foreach ($especialidades as $especialidad): ?>
                                                     <option value="<?php echo $especialidad['id']; ?>" 
                                                             <?php echo ($policia['especialidad_id'] == $especialidad['id']) ? 'selected' : ''; ?>>
                                                         <?php echo htmlspecialchars($especialidad['nombre']); ?>
                                                     </option>
-                                                <?php endwhile; ?>
+                                                <?php endforeach; ?>
                                             </select>
                                         </div>
                                         
                                         <div class="mb-3">
                                             <label for="cargo" class="form-label">Cargo</label>
                                             <input type="text" class="form-control" id="cargo" name="cargo" 
-                                                   value="<?php echo htmlspecialchars($policia['cargo']); ?>">
+                                                   value="<?php echo htmlspecialchars($policia['cargo'] ?? ''); ?>">
                                         </div>
                                         
                                         <div class="mb-3">
@@ -297,31 +291,26 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                             <label for="region_id" class="form-label">Región</label>
                                             <select class="form-select" id="region_id" name="region_id">
                                                 <option value="">Seleccionar región...</option>
-                                                <?php 
-                                                if ($regiones->num_rows > 0) {
-                                                    while ($region = $regiones->fetch_assoc()): 
-                                                ?>
+                                                <?php foreach ($regiones as $region): ?>
                                                 <option value="<?php echo $region['id']; ?>" <?php echo ($policia['region_id'] == $region['id']) ? 'selected' : ''; ?>><?php echo htmlspecialchars($region['nombre']); ?></option>
-                                                <?php 
-                                                    endwhile; 
-                                                    $regiones->data_seek(0);
-                                                }
-                                                ?>
+                                                <?php endforeach; ?>
                                             </select>
                                         </div>
                                         
                                         <div class="mb-3">
-                                            <label for="lugar_guardia_id" class="form-label">Lugar de Guardia</label>
+                                            <label for="lugar_guardia_id" class="form-label">Lugar de Guardia Principal</label>
                                             <select class="form-select" id="lugar_guardia_id" name="lugar_guardia_id">
                                                 <option value="">Sin asignar...</option>
-                                                <?php while ($lugar = $lugares_guardias->fetch_assoc()): ?>
+                                                <?php foreach ($lugares_guardias as $lugar): ?>
                                                     <option value="<?php echo $lugar['id']; ?>" 
                                                             <?php echo ($policia['lugar_guardia_id'] == $lugar['id']) ? 'selected' : ''; ?>>
                                                         <?php echo htmlspecialchars($lugar['nombre']); ?>
                                                     </option>
-                                                <?php endwhile; ?>
+                                                <?php endforeach; ?>
                                             </select>
                                         </div>
+                                        
+
                                     </div>
                                     
                                     <!-- Observaciones -->
@@ -330,7 +319,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
                                         
                                         <div class="mb-3">
                                             <label for="observaciones" class="form-label">Observaciones</label>
-                                            <textarea class="form-control" id="observaciones" name="observaciones" rows="5"><?php echo htmlspecialchars($policia['observaciones']); ?></textarea>
+                                            <textarea class="form-control" id="observaciones" name="observaciones" rows="5"><?php echo htmlspecialchars($policia['observaciones'] ?? ''); ?></textarea>
                                         </div>
                                     </div>
                                 </div>

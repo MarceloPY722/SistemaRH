@@ -3,10 +3,8 @@
 if (isset($_SESSION['usuario_id'])) {
     require_once __DIR__ . '/../../cnx/db_connect.php';
     $stmt = $conn->prepare("SELECT nombre_usuario, rol FROM usuarios WHERE id = ?");
-    $stmt->bind_param("i", $_SESSION['usuario_id']);
-    $stmt->execute();
-    $usuario_actual = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
+    $stmt->execute([$_SESSION['usuario_id']]);
+    $usuario_actual = $stmt->fetch();
 }
 ?>
 <!-- Sidebar -->
@@ -637,7 +635,6 @@ function toggleSidebar() {
     }
 }
 
-// Cerrar sidebar al hacer clic en el overlay
 document.addEventListener('click', function(e) {
     if (e.target.classList.contains('sidebar-overlay')) {
         toggleSidebar();

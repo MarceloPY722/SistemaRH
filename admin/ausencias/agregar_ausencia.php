@@ -1,75 +1,171 @@
 <?php
 session_start();
+
 if (!isset($_SESSION['usuario_id'])) {
-    header('Location: ../../login.php');
+    header("Location: ../../index.php");
     exit();
 }
 
 require_once '../../cnx/db_connect.php';
 
-// Búsqueda AJAX de policías
-if (isset($_GET['buscar_policia'])) {
-    $termino = $_GET['buscar_policia'];
+// Manejar búsqueda AJAX de policías
+if (isset($_GET['action']) && $_GET['action'] == 'buscar_policia') {
+    $termino = $_GET['termino'] ?? '';
     
-    $sql = "SELECT p.id, p.nombre, p.apellido, p.cin, g.nombre as grado 
-            FROM policias p 
-            JOIN grados g ON p.grado_id = g.id 
-            WHERE p.activo = 1 
-            AND (p.nombre LIKE ? OR p.apellido LIKE ? OR p.cin LIKE ?)
-            ORDER BY p.apellido, p.nombre
-            LIMIT 10";
-    
-    $stmt = $conn->prepare($sql);
-    $busqueda = "%$termino%";
-    $stmt->bind_param('sss', $busqueda, $busqueda, $busqueda);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    $policias = [];
-    while ($row = $result->fetch_assoc()) {
-        $policias[] = [
-            'id' => $row['id'],
-            'texto' => $row['apellido'] . ', ' . $row['nombre'] . ' - ' . $row['grado'] . ' (CI: ' . $row['cin'] . ')'
-        ];
+    if (strlen($termino) >= 2) {
+        $sql = "SELECT p.id, p.nombre, p.apellido, p.cin, p.legajo, g.nombre as grado, lg.nombre as lugar_guardia
+                FROM policias p
+                LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+                LEFT JOIN grados g ON tg.grado_id = g.id
+                LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
+                WHERE p.activo = 1 
+                AND (p.nombre LIKE ? OR p.apellido LIKE ? OR p.cin LIKE ? OR p.legajo LIKE ?)
+                ORDER BY p.apellido, p.nombre
+                LIMIT 10";
+        
+        $termino_busqueda = "%$termino%";
+        $stmt = $conn->prepare($sql);
+        $stmt->execute([$termino_busqueda, $termino_busqueda, $termino_busqueda, $termino_busqueda]);
+        
+        $policias = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $policias[] = $row;
+        }
+        
+        header('Content-Type: application/json');
+        echo json_encode($policias);
+        exit();
     }
     
     header('Content-Type: application/json');
-    echo json_encode($policias);
+    echo json_encode([]);
     exit();
 }
 
 // Procesar formulario
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+if ($_POST) {
     $policia_id = $_POST['policia_id'];
     $tipo_ausencia_id = $_POST['tipo_ausencia_id'];
     $fecha_inicio = $_POST['fecha_inicio'];
-    $fecha_fin = $_POST['fecha_fin'] ?: null;
-    $descripcion = $_POST['descripcion'];
-    $justificacion = $_POST['justificacion'];
+    $fecha_fin = isset($_POST['fecha_indefinida']) && $_POST['fecha_indefinida'] == '1' ? null : ($_POST['fecha_fin'] ?: null);
+    $descripcion = $_POST['descripcion'] ?? '';
+    $justificacion = $_POST['justificacion'] ?? '';
+    // Variable usuario_id removida - no existe en la tabla ausencias
     
-    // Aprobación automática para administradores
-    $estado = 'APROBADA';
-    $aprobado_por = $_SESSION['usuario_id'];
+    // Manejar archivo adjunto
+    $documento_path = null;
+    if (isset($_FILES['documento_adjunto']) && $_FILES['documento_adjunto']['error'] == 0) {
+        $upload_dir = '../../uploads/ausencias/';
+        if (!file_exists($upload_dir)) {
+            mkdir($upload_dir, 0777, true);
+        }
+        
+        $file_extension = pathinfo($_FILES['documento_adjunto']['name'], PATHINFO_EXTENSION);
+        $new_filename = 'ausencia_' . $policia_id . '_' . time() . '.' . $file_extension;
+        $documento_path = $upload_dir . $new_filename;
+        
+        if (move_uploaded_file($_FILES['documento_adjunto']['tmp_name'], $documento_path)) {
+            $documento_path = 'uploads/ausencias/' . $new_filename;
+        } else {
+            $documento_path = null;
+        }
+    }
     
-    $sql = "INSERT INTO ausencias (policia_id, tipo_ausencia_id, fecha_inicio, fecha_fin, descripcion, justificacion, estado, aprobado_por) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param('iisssssi', $policia_id, $tipo_ausencia_id, $fecha_inicio, $fecha_fin, $descripcion, $justificacion, $estado, $aprobado_por);
+    // Insertar ausencia
+    $sql_insert = "INSERT INTO ausencias (policia_id, tipo_ausencia_id, fecha_inicio, fecha_fin, descripcion, justificacion, documento_adjunto, estado, created_at) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'APROBADA', NOW())";
     
-    if ($stmt->execute()) {
-        $_SESSION['mensaje'] = 'Ausencia registrada y aprobada automáticamente';
-        $_SESSION['tipo_mensaje'] = 'success';
-        header('Location: index.php');
-        exit();
+    $stmt = $conn->prepare($sql_insert);
+    
+    if ($stmt->execute([$policia_id, $tipo_ausencia_id, $fecha_inicio, $fecha_fin, $descripcion, $justificacion, $documento_path])) {
+        $ausencia_id = $conn->lastInsertId();
+        
+        // Si es Junta Médica, registrar en orden_junta_medica_telefonista
+        $sql_tipo = "SELECT nombre FROM tipos_ausencias WHERE id = ?";
+        $stmt_tipo = $conn->prepare($sql_tipo);
+        $stmt_tipo->execute([$tipo_ausencia_id]);
+        $tipo_result = $stmt_tipo->fetch(PDO::FETCH_ASSOC);
+        
+        if ($tipo_result && $tipo_result['nombre'] == 'Junta Medica') {
+            // Obtener datos completos del policía
+            $sql_policia = "SELECT lugar_guardia_id, lugar_guardia_reserva_id FROM policias WHERE id = ?";
+            $stmt_policia = $conn->prepare($sql_policia);
+            $stmt_policia->execute([$policia_id]);
+            $policia_data = $stmt_policia->fetch(PDO::FETCH_ASSOC);
+            
+            // Obtener el siguiente orden de anotación
+            $sql_orden = "SELECT COALESCE(MAX(orden_anotacion), 0) + 1 as siguiente_orden FROM orden_junta_medica_telefonista WHERE activo = 1";
+            $stmt_orden = $conn->prepare($sql_orden);
+            $stmt_orden->execute();
+            $siguiente_orden = $stmt_orden->fetch(PDO::FETCH_ASSOC)['siguiente_orden'];
+            
+            // Insertar en orden_junta_medica_telefonista
+            $sql_junta = "INSERT INTO orden_junta_medica_telefonista (policia_id, ausencia_id, lugar_guardia_original_id, orden_anotacion, fecha_anotacion, activo) 
+                          VALUES (?, ?, ?, ?, NOW(), 1)";
+            $stmt_junta = $conn->prepare($sql_junta);
+            $stmt_junta->execute([$policia_id, $ausencia_id, $policia_data['lugar_guardia_id'], $siguiente_orden]);
+            
+          
+            $nuevo_principal = 6; 
+            $nuevo_reserva = $policia_data['lugar_guardia_id'];             
+            $stmt_intercambio = $conn->prepare("UPDATE policias SET lugar_guardia_id = ?, lugar_guardia_reserva_id = ? WHERE id = ?");
+            
+            if ($stmt_intercambio->execute([$nuevo_principal, $nuevo_reserva, $policia_id])) {
+       
+                $conn->exec("CREATE TABLE IF NOT EXISTS intercambios_guardias (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    policia_id INT NOT NULL,
+                    ausencia_id INT NOT NULL,
+                    lugar_original_id INT NOT NULL,
+                    lugar_intercambio_id INT NOT NULL,
+                    fecha_intercambio DATETIME NOT NULL,
+                    fecha_restauracion DATETIME NULL,
+                    usuario_id INT NOT NULL,
+                    activo TINYINT(1) DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )");
+                
+                // Registrar el intercambio
+                $stmt_log = $conn->prepare("INSERT INTO intercambios_guardias (policia_id, ausencia_id, lugar_original_id, lugar_intercambio_id, fecha_intercambio, usuario_id) VALUES (?, ?, ?, ?, NOW(), ?)");
+                $stmt_log->execute([$policia_id, $ausencia_id, $nuevo_reserva, $nuevo_principal, $_SESSION['usuario_id']]);
+                
+                // Marcar al policía como disponible en su nuevo lugar de guardia
+                try {
+                    $stmt_disponible = $conn->prepare("CALL MarcarDisponibleEnNuevoLugar(?)");
+                    $stmt_disponible->execute([$policia_id]);
+                } catch (Exception $e) {
+                    // Si el procedimiento no existe, asegurar que esté en lista_guardias
+                    $stmt_check_lista = $conn->prepare("SELECT COUNT(*) as count FROM lista_guardias WHERE policia_id = ?");
+                    $stmt_check_lista->execute([$policia_id]);
+                    $result_lista = $stmt_check_lista->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($result_lista['count'] == 0) {
+                        // Agregar a lista_guardias si no está
+                        $stmt_add_lista = $conn->prepare("INSERT INTO lista_guardias (policia_id, posicion) SELECT ?, COALESCE(MAX(posicion), 0) + 1 FROM lista_guardias");
+                        $stmt_add_lista->execute([$policia_id]);
+                    }
+                }
+            }
+        }
+        
+        if ($tipo_result && $tipo_result['nombre'] == 'Junta Medica') {
+            $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle me-2'></i><strong>Ya se agregó la ausencia permanente por Junta Médica.</strong><br>El lugar de guardia del policía ha sido cambiado automáticamente a <strong>ATENCIÓN TELEFÓNICA EXCLUSIVA</strong>.</div>";
+        } else {
+            // Para ausencias que no son Junta Médica, cambiar estado a NO DISPONIBLE
+            $sql_update_estado = "UPDATE policias SET estado = 'NO DISPONIBLE' WHERE id = ?";
+            $stmt_update_estado = $conn->prepare($sql_update_estado);
+            $stmt_update_estado->execute([$policia_id]);
+            
+            $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle me-2'></i>Ausencia registrada exitosamente. El estado del policía ha sido cambiado a <strong>NO DISPONIBLE</strong>.</div>";
+        }
     } else {
-        $_SESSION['mensaje'] = 'Error al registrar la ausencia';
-        $_SESSION['tipo_mensaje'] = 'danger';
+        $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle me-2'></i>Error al registrar la ausencia</div>";
     }
 }
 
-// Obtener tipos de ausencias
 $sql_tipos = "SELECT * FROM tipos_ausencias ORDER BY nombre";
-$result_tipos = $conn->query($sql_tipos);
+$stmt_tipos = $conn->prepare($sql_tipos);
+$stmt_tipos->execute();
 ?>
 
 <!DOCTYPE html>
@@ -77,122 +173,127 @@ $result_tipos = $conn->query($sql_tipos);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nueva Ausencia - Sistema RH</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <title>Registrar Nueva Ausencia - Sistema RH</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary-color: #2c5aa0;
-            --secondary-color: #1e3d72;
-            --light-blue: #e8f2ff;
-            --success-color: #28a745;
-            --warning-color: #ffc107;
-            --danger-color: #dc3545;
-            --light-bg: #f8f9fa;
-            --white: #ffffff;
-            --border-color: #dee2e6;
-            --text-dark: #343a40;
-            --text-muted: #6c757d;
+            --primary-color: #2563eb;
+            --primary-dark: #1d4ed8;
+            --secondary-color: #64748b;
+            --success-color: #059669;
+            --danger-color: #dc2626;
+            --warning-color: #d97706;
+            --light-bg: #f8fafc;
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --border-radius: 12px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
         body {
-            background-color: var(--light-bg);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            color: var(--text-dark);
-            font-size: 14px;
-        }
-
-        .main-content {
-            padding: 15px;
+            font-family: 'Inter', sans-serif;
+            background: #f8fafc;
             min-height: 100vh;
         }
 
-        .page-header {
-            background: var(--primary-color);
-            color: white;
-            padding: 1rem 1.5rem;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-            box-shadow: 0 2px 8px rgba(44, 90, 160, 0.2);
+        .main-content {
+            padding: 20px;
         }
 
-        .page-header h1 {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-bottom: 0.25rem;
-        }
-
-        .page-header p {
-            font-size: 0.9rem;
-            opacity: 0.9;
-            margin: 0;
-        }
-
-        .form-container {
+        .main-container {
             max-width: 900px;
             margin: 0 auto;
         }
 
         .form-card {
-            background: var(--white);
-            border-radius: 8px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
-            border: 1px solid var(--border-color);
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--card-shadow);
+            overflow: hidden;
+            animation: slideUp 0.6s ease-out;
         }
 
-        .form-title {
-            color: var(--primary-color);
-            font-weight: 600;
-            margin-bottom: 1rem;
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .form-header {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            color: white;
+            padding: 30px;
             text-align: center;
-            font-size: 1.25rem;
         }
 
-        .form-section {
-            background: var(--light-blue);
-            border-radius: 6px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            border-left: 3px solid var(--primary-color);
-        }
-
-        .section-title {
-            color: var(--primary-color);
+        .form-header h1 {
+            font-size: 2rem;
             font-weight: 600;
-            margin-bottom: 0.75rem;
-            font-size: 1rem;
+            margin-bottom: 8px;
+        }
+
+        .form-header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .form-body {
+            padding: 40px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
         }
 
         .form-label {
-            font-weight: 500;
-            color: var(--text-dark);
-            margin-bottom: 0.25rem;
-            font-size: 0.9rem;
-        }
-
-        .required-field::after {
-            content: ' *';
-            color: var(--danger-color);
-            font-weight: bold;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         .form-control, .form-select {
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-            padding: 0.5rem 0.75rem;
-            font-size: 0.9rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 1rem;
             transition: all 0.3s ease;
-            height: auto;
+            background: #fafafa;
         }
 
         .form-control:focus, .form-select:focus {
             border-color: var(--primary-color);
-            box-shadow: 0 0 0 0.15rem rgba(44, 90, 160, 0.25);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+            background: white;
         }
 
         .search-container {
             position: relative;
+        }
+
+        .search-input {
+            padding-right: 45px;
+        }
+
+        .search-icon {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--secondary-color);
         }
 
         .search-results {
@@ -200,156 +301,163 @@ $result_tipos = $conn->query($sql_tipos);
             top: 100%;
             left: 0;
             right: 0;
-            background: var(--white);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            z-index: 1000;
-            max-height: 180px;
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            max-height: 300px;
             overflow-y: auto;
+            z-index: 1000;
+            display: none;
         }
 
-        .search-item {
-            padding: 0.5rem 0.75rem;
+        .search-result-item {
+            padding: 12px 16px;
             cursor: pointer;
-            border-bottom: 1px solid #f1f1f1;
-            transition: background-color 0.2s ease;
-            font-size: 0.85rem;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background-color 0.2s;
         }
 
-        .search-item:hover {
-            background-color: var(--light-blue);
+        .search-result-item:hover {
+            background-color: #f8fafc;
         }
 
-        .search-item:last-child {
+        .search-result-item:last-child {
             border-bottom: none;
         }
 
-        .policia-selected {
-            background: #d4edda;
-            border: 1px solid var(--success-color);
-            border-radius: 6px;
-            padding: 0.75rem;
-            margin-top: 0.5rem;
+        .policia-info {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 0.85rem;
+        }
+
+        .policia-name {
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .policia-details {
+            font-size: 0.875rem;
+            color: var(--secondary-color);
+        }
+
+        .policia-badge {
+            background: var(--primary-color);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .selected-policia {
+            background: #f0f9ff;
+            border: 2px solid var(--primary-color);
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 10px;
+            display: none;
         }
 
         .btn-primary {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
-            border-radius: 6px;
-            padding: 0.5rem 1rem;
-            font-weight: 500;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-weight: 600;
             transition: all 0.3s ease;
-            font-size: 0.9rem;
         }
 
         .btn-primary:hover {
-            background-color: var(--secondary-color);
-            border-color: var(--secondary-color);
-            transform: translateY(-1px);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(37, 99, 235, 0.3);
         }
 
-        .btn-outline-secondary {
-            border: 1px solid var(--text-muted);
-            color: var(--text-muted);
-            border-radius: 6px;
-            padding: 0.5rem 1rem;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
-        }
-
-        .btn-outline-secondary:hover {
-            background-color: var(--text-muted);
-            color: white;
-        }
-
-        .btn-outline-light {
-            border: 1px solid rgba(255,255,255,0.5);
-            color: white;
-            transition: all 0.3s ease;
-            font-size: 0.85rem;
-            padding: 0.4rem 0.8rem;
-        }
-
-        .btn-outline-light:hover {
-            background-color: rgba(255,255,255,0.1);
-            color: white;
-        }
-
-        .btn-outline-danger {
-            border: 1px solid var(--danger-color);
-            color: var(--danger-color);
-            border-radius: 4px;
-            padding: 0.2rem 0.4rem;
-            font-size: 0.75rem;
-        }
-
-        .btn-outline-danger:hover {
-            background-color: var(--danger-color);
-            color: white;
-        }
-
-        .alert {
-            border-radius: 6px;
-            margin-bottom: 1rem;
+        .btn-secondary {
+            background: var(--secondary-color);
             border: none;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            padding: 0.75rem 1rem;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-weight: 600;
+            color: white;
         }
 
-        .input-group-text {
-            background-color: var(--primary-color);
-            color: white;
-            border: 1px solid var(--primary-color);
-            border-radius: 6px 0 0 6px;
-            padding: 0.5rem 0.75rem;
+        .file-upload-area {
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .file-upload-area:hover {
+            border-color: var(--primary-color);
+            background: #f8fafc;
+        }
+
+        .file-upload-area.dragover {
+            border-color: var(--primary-color);
+            background: #eff6ff;
+        }
+
+        .required {
+            color: var(--danger-color);
         }
 
         .form-text {
-            color: var(--text-muted);
-            font-size: 0.75rem;
-            margin-top: 0.25rem;
+            color: var(--secondary-color);
+            font-size: 0.875rem;
+            margin-top: 5px;
         }
 
-        .mb-3 {
-            margin-bottom: 0.75rem !important;
+        .alert {
+            border-radius: 8px;
+            border: none;
+            padding: 16px;
+            margin-bottom: 25px;
         }
 
-        .mb-2 {
-            margin-bottom: 0.5rem !important;
+        .loading-spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
         }
 
-        textarea.form-control {
-            resize: vertical;
-            min-height: 60px;
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         @media (max-width: 768px) {
-            .main-content {
-                padding: 10px;
+            .main-container {
+                padding: 0 15px;
             }
             
-            .form-card {
-                padding: 1rem;
+            .form-body {
+                padding: 25px;
             }
             
-            .page-header {
-                padding: 1rem;
-                text-align: center;
+            .form-header {
+                padding: 25px;
             }
-
-            .page-header .d-flex {
-                flex-direction: column;
-                gap: 0.5rem;
-            }
-
-            .col-md-6, .col-md-4 {
-                margin-bottom: 0.5rem;
+            
+            .form-header h1 {
+                font-size: 1.5rem;
             }
         }
     </style>
@@ -363,229 +471,369 @@ $result_tipos = $conn->query($sql_tipos);
             <!-- Contenido Principal -->
             <div class="col-md-9 col-lg-10">
                 <div class="main-content">
-                    <!-- Mensajes de alerta -->
-                    <?php if (isset($_SESSION['mensaje'])): ?>
-                    <div class="alert alert-<?php echo $_SESSION['tipo_mensaje']; ?> alert-dismissible fade show" role="alert">
-                        <i class="fas fa-info-circle me-2"></i><?php echo $_SESSION['mensaje']; ?>
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                    <?php 
-                    unset($_SESSION['mensaje']);
-                    unset($_SESSION['tipo_mensaje']);
-                    endif; ?>
-
-                    <!-- Header -->
-                    <div class="page-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h1><i class="fas fa-plus-circle me-2"></i>Nueva Ausencia</h1>
-                                <p>Registra una nueva ausencia del personal</p>
-                            </div>
-                            <div>
-                                <a href="index.php" class="btn btn-outline-light">
-                                    <i class="fas fa-arrow-left me-1"></i>Volver
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Formulario -->
-                    <div class="form-container">
+                    <div class="main-container">
                         <div class="form-card">
-                            <h3 class="form-title">
-                                <i class="fas fa-user-plus me-2"></i>Datos de la Ausencia
-                            </h3>
-                            
-                            <form method="POST" id="formAusencia">
-                                <!-- Sección: Selección de Personal -->
-                                <div class="form-section">
-                                    <h5 class="section-title">
-                                        <i class="fas fa-user me-2"></i>Personal
-                                    </h5>
-                                    
-                                    <input type="hidden" name="policia_id" id="policia_id_hidden">
-                                    
-                                    <div class="mb-2">
-                                        <label class="form-label required-field">
-                                            Buscar Policía
-                                        </label>
-                                        <div class="search-container">
-                                            <div class="input-group">
-                                                <span class="input-group-text">
-                                                    <i class="fas fa-search"></i>
-                                                </span>
-                                                <input type="text" class="form-control" id="buscar_policia" 
-                                                       placeholder="Nombre, apellido o CI..." autocomplete="off">
-                                            </div>
-                                            <div id="resultados_busqueda" class="search-results" style="display: none;"></div>
-                                        </div>
-                                        <div id="policia_seleccionado" class="policia-selected" style="display: none;">
-                                            <span id="policia_texto"></span>
-                                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="limpiarSeleccion()">
-                                                <i class="fas fa-times"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Sección: Tipo y Fechas -->
-                                <div class="form-section">
-                                    <h5 class="section-title">
-                                        <i class="fas fa-calendar me-2"></i>Tipo y Fechas
-                                    </h5>
-                                    
-                                    <div class="row">
-                                        <div class="col-md-4 mb-2">
-                                            <label class="form-label required-field">
-                                                Tipo de Ausencia
-                                            </label>
-                                            <select name="tipo_ausencia_id" class="form-select" required>
-                                                <option value="">Seleccionar...</option>
-                                                <?php while ($tipo = $result_tipos->fetch_assoc()): ?>
-                                                <option value="<?php echo $tipo['id']; ?>"><?php echo $tipo['nombre']; ?></option>
-                                                <?php endwhile; ?>
-                                            </select>
-                                        </div>
-                                        <div class="col-md-4 mb-2">
-                                            <label class="form-label required-field">
-                                                Fecha Inicio
-                                            </label>
-                                            <input type="date" name="fecha_inicio" class="form-control" required>
-                                        </div>
-                                        <div class="col-md-4 mb-2">
-                                            <label class="form-label">
-                                                Fecha Fin (Opcional)
-                                            </label>
-                                            <input type="date" name="fecha_fin" class="form-control">
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Sección: Detalles -->
-                                <div class="form-section">
-                                    <h5 class="section-title">
-                                        <i class="fas fa-file-text me-2"></i>Detalles
-                                    </h5>
-                                    
-                                    <div class="row">
-                                        <div class="col-md-6 mb-2">
-                                            <label class="form-label">
-                                                Descripción
-                                            </label>
-                                            <textarea name="descripcion" class="form-control" rows="2" 
-                                                      placeholder="Motivo de la ausencia..."></textarea>
-                                        </div>
-                                        <div class="col-md-6 mb-2">
-                                            <label class="form-label">
-                                                Justificación (Opcional)
-                                            </label>
-                                            <textarea name="justificacion" class="form-control" rows="2" 
-                                                      placeholder="Justificación adicional..."></textarea>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Botones -->
-                                <div class="d-flex justify-content-between mt-3">
-                                                
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="fas fa-save me-1"></i>Registrar Ausencia
-                                    </button>
-                                </div>
-                            </form>
+            <div class="form-header">
+                <h1><i class="fas fa-user-clock me-3"></i>Registrar Nueva Ausencia</h1>
+                <p>Complete el formulario para registrar una ausencia del personal</p>
+            </div>
+            
+            <div class="form-body">
+                <?php if (isset($mensaje)) echo $mensaje; ?>
+                
+                <form id="formAusencia" method="POST" enctype="multipart/form-data">
+                    <div class="row">
+                        <!-- Búsqueda de Policía -->
+                        <div class="col-12 form-group">
+                            <label class="form-label">
+                                <i class="fas fa-search"></i>
+                                Buscar Policía <span class="required">*</span>
+                            </label>
+                            <div class="search-container">
+                                <input type="text" id="buscar_policia" class="form-control search-input" 
+                                       placeholder="Escriba nombre, apellido, CI o legajo..." autocomplete="off">
+                                <i class="fas fa-search search-icon"></i>
+                                <div class="loading-spinner" id="loading-spinner"></div>
+                                <div class="search-results" id="search-results"></div>
+                            </div>
+                            <input type="hidden" name="policia_id" id="policia_id" required>
+                            <div class="selected-policia" id="selected-policia"></div>
+                        </div>
+                        
+                        <!-- Tipo de Ausencia -->
+                        <div class="col-md-6 form-group">
+                            <label for="tipo_ausencia_id" class="form-label">
+                                <i class="fas fa-tags"></i>
+                                Tipo de Ausencia <span class="required">*</span>
+                            </label>
+                            <select name="tipo_ausencia_id" id="tipo_ausencia_id" class="form-select" required>
+                                <option value="">Seleccione un tipo...</option>
+                                <?php while ($tipo = $stmt_tipos->fetch(PDO::FETCH_ASSOC)): ?>
+                                    <option value="<?php echo $tipo['id']; ?>" 
+                                            data-requiere-justificacion="<?php echo $tipo['requiere_justificacion']; ?>">
+                                        <?php echo htmlspecialchars($tipo['nombre']); ?>
+                                    </option>
+                                <?php endwhile; ?>
+                            </select>
+                        </div>
+                        
+                        <!-- Fecha de Inicio -->
+                        <div class="col-md-6 form-group">
+                            <label for="fecha_inicio" class="form-label">
+                                <i class="fas fa-calendar-alt"></i>
+                                Fecha de Inicio <span class="required">*</span>
+                            </label>
+                            <input type="date" name="fecha_inicio" id="fecha_inicio" class="form-control" 
+                                   value="<?php echo date('Y-m-d'); ?>" required>
+                        </div>
+                        
+                        <!-- Fecha de Fin -->
+                        <div class="col-md-6 form-group" id="fecha_fin_container">
+                            <label for="fecha_fin" class="form-label">
+                                <i class="fas fa-calendar-check"></i>
+                                Fecha de Fin
+                            </label>
+                            <input type="date" name="fecha_fin" id="fecha_fin" class="form-control">
+                            <div class="form-text">Opcional - Dejar vacío si es indefinida</div>
+                        </div>
+                        
+                        <!-- Fecha Indefinida (solo para Junta Médica) -->
+                        <div class="col-md-6 form-group" id="fecha_indefinida_container" style="display: none;">
+                            <label class="form-label">
+                                <i class="fas fa-infinity"></i>
+                                Duración de la Ausencia
+                            </label>
+                            <div class="form-check mt-3">
+                                <input class="form-check-input" type="checkbox" id="fecha_indefinida" name="fecha_indefinida" value="1">
+                                <label class="form-check-label" for="fecha_indefinida">
+                                    <strong>Fecha Indefinida</strong>
+                                    <div class="form-text">El policía será asignado a Atención Telefónica Exclusiva permanentemente</div>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Descripción -->
+                        <div class="col-md-6 form-group">
+                            <label for="descripcion" class="form-label">
+                                <i class="fas fa-comment-alt"></i>
+                                Descripción
+                            </label>
+                            <textarea name="descripcion" id="descripcion" class="form-control" rows="3" 
+                                      placeholder="Descripción breve de la ausencia..."></textarea>
+                        </div>
+                        
+                        <!-- Justificación (condicional) -->
+                        <div class="col-12 form-group justificacion-field" style="display: none;">
+                            <label for="justificacion" class="form-label">
+                                <i class="fas fa-file-alt"></i>
+                                Justificación <span class="required">*</span>
+                            </label>
+                            <textarea name="justificacion" id="justificacion" class="form-control" rows="4" 
+                                      placeholder="Proporcione la justificación detallada para esta ausencia..."></textarea>
+                        </div>
+                        
+                        <!-- Documento Adjunto -->
+                        <div class="col-12 form-group">
+                            <label class="form-label">
+                                <i class="fas fa-paperclip"></i>
+                                Documento Adjunto
+                            </label>
+                            <div class="file-upload-area" onclick="document.getElementById('documento_adjunto').click()">
+                                <i class="fas fa-cloud-upload-alt fa-2x text-primary mb-3"></i>
+                                <p class="mb-2"><strong>Haga clic para seleccionar un archivo</strong></p>
+                                <p class="text-muted mb-0">PDF, Imágenes o Documentos (Máx. 5MB)</p>
+                                <input type="file" name="documento_adjunto" id="documento_adjunto" 
+                                       accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="display: none;">
+                            </div>
+                            <div id="file-selected" class="mt-3" style="display: none;"></div>
                         </div>
                     </div>
-                </div>
+                    
+                    <!-- Botones -->
+                    <div class="d-flex justify-content-between mt-4">
+                        <a href="index.php" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>
+                            Volver
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>
+                            Registrar Ausencia
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        let timeoutId;
-        let policiaSeleccionado = null;
+        let searchTimeout;
+        let selectedPoliciaId = null;
 
-        // Búsqueda de policías con debounce
+        // Búsqueda en tiempo real de policías
         document.getElementById('buscar_policia').addEventListener('input', function() {
-            clearTimeout(timeoutId);
-            const query = this.value.trim();
+            const termino = this.value.trim();
+            const resultsContainer = document.getElementById('search-results');
+            const loadingSpinner = document.getElementById('loading-spinner');
             
-            if (query.length < 2) {
-                document.getElementById('resultados_busqueda').style.display = 'none';
+            clearTimeout(searchTimeout);
+            
+            if (termino.length < 2) {
+                resultsContainer.style.display = 'none';
                 return;
             }
             
-            timeoutId = setTimeout(() => {
-                buscarPolicias(query);
+            loadingSpinner.style.display = 'inline-block';
+            
+            searchTimeout = setTimeout(() => {
+                fetch(`?action=buscar_policia&termino=${encodeURIComponent(termino)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        loadingSpinner.style.display = 'none';
+                        mostrarResultados(data);
+                    })
+                    .catch(error => {
+                        loadingSpinner.style.display = 'none';
+                        console.error('Error:', error);
+                    });
             }, 300);
         });
 
-        function buscarPolicias(query) {
-            fetch(`agregar_ausencia.php?buscar_policia=${encodeURIComponent(query)}`)
-                .then(response => response.json())
-                .then(data => {
-                    mostrarResultados(data);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
-        }
-
         function mostrarResultados(policias) {
-            const container = document.getElementById('resultados_busqueda');
+            const resultsContainer = document.getElementById('search-results');
             
             if (policias.length === 0) {
-                container.innerHTML = '<div class="search-item"><i class="fas fa-exclamation-circle me-2"></i>No se encontraron resultados</div>';
-            } else {
-                container.innerHTML = policias.map(policia => 
-                    `<div class="search-item" onclick="seleccionarPolicia(${policia.id}, '${policia.texto.replace(/'/g, "\\'")}')">                        <i class="fas fa-user me-2"></i>${policia.texto}
-                    </div>`
-                ).join('');
+                resultsContainer.innerHTML = '<div class="search-result-item text-muted">No se encontraron resultados</div>';
+                resultsContainer.style.display = 'block';
+                return;
             }
             
-            container.style.display = 'block';
+            let html = '';
+            policias.forEach(policia => {
+                html += `
+                    <div class="search-result-item" onclick="seleccionarPolicia(${policia.id}, '${policia.nombre}', '${policia.apellido}', '${policia.cin}', '${policia.legajo}', '${policia.grado || ''}', '${policia.lugar_guardia || ''}')">
+                        <div class="policia-info">
+                            <div>
+                                <div class="policia-name">${policia.apellido}, ${policia.nombre}</div>
+                                <div class="policia-details">CI: ${policia.cin} | Legajo: ${policia.legajo}</div>
+                            </div>
+                            <div class="text-end">
+                                <div class="policia-badge">${policia.grado || 'Sin grado'}</div>
+                                <div class="policia-details mt-1">${policia.lugar_guardia || 'Sin asignar'}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            resultsContainer.innerHTML = html;
+            resultsContainer.style.display = 'block';
         }
 
-        function seleccionarPolicia(id, texto) {
-            policiaSeleccionado = { id, texto };
-            document.getElementById('policia_id_hidden').value = id;
-            document.getElementById('policia_texto').textContent = texto;
-            document.getElementById('policia_seleccionado').style.display = 'flex';
-            document.getElementById('buscar_policia').value = '';
-            document.getElementById('resultados_busqueda').style.display = 'none';
+        function seleccionarPolicia(id, nombre, apellido, cin, legajo, grado, lugarGuardia) {
+            selectedPoliciaId = id;
+            document.getElementById('policia_id').value = id;
+            document.getElementById('buscar_policia').value = `${apellido}, ${nombre}`;
+            document.getElementById('search-results').style.display = 'none';
+            
+            const selectedContainer = document.getElementById('selected-policia');
+            selectedContainer.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1"><i class="fas fa-user me-2"></i>${apellido}, ${nombre}</h6>
+                        <small class="text-muted">CI: ${cin} | Legajo: ${legajo} | ${grado} | ${lugarGuardia}</small>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="limpiarSeleccion()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+            selectedContainer.style.display = 'block';
+            selectedContainer.classList.add('fade-in');
         }
 
         function limpiarSeleccion() {
-            policiaSeleccionado = null;
-            document.getElementById('policia_id_hidden').value = '';
-            document.getElementById('policia_seleccionado').style.display = 'none';
+            selectedPoliciaId = null;
+            document.getElementById('policia_id').value = '';
             document.getElementById('buscar_policia').value = '';
+            document.getElementById('selected-policia').style.display = 'none';
         }
 
         // Ocultar resultados al hacer clic fuera
         document.addEventListener('click', function(e) {
             if (!e.target.closest('.search-container')) {
-                document.getElementById('resultados_busqueda').style.display = 'none';
+                document.getElementById('search-results').style.display = 'none';
             }
         });
+
+        // Manejar cambios en tipo de ausencia
+        document.getElementById('tipo_ausencia_id').addEventListener('change', function() {
+            const requiereJustificacion = this.options[this.selectedIndex].dataset.requiereJustificacion;
+            const tipoAusencia = this.options[this.selectedIndex].text;
+            
+            // Manejar campo de justificación
+            const justificacionField = document.querySelector('.justificacion-field');
+            const justificacionInput = document.getElementById('justificacion');
+            
+            if (requiereJustificacion == '1') {
+                justificacionField.style.display = 'block';
+                justificacionInput.required = true;
+            } else {
+                justificacionField.style.display = 'none';
+                justificacionInput.required = false;
+            }
+            
+            // Manejar campos de fecha según si es Junta Médica
+            const fechaFinContainer = document.getElementById('fecha_fin_container');
+            const fechaIndefinidaContainer = document.getElementById('fecha_indefinida_container');
+            const fechaFinInput = document.getElementById('fecha_fin');
+            const fechaIndefinidaInput = document.getElementById('fecha_indefinida');
+            
+            if (tipoAusencia === 'Junta Medica') {
+                fechaFinContainer.style.display = 'none';
+                fechaIndefinidaContainer.style.display = 'block';
+                fechaFinInput.required = false;
+                fechaFinInput.value = '';
+                fechaIndefinidaInput.checked = true;
+            } else {
+                fechaFinContainer.style.display = 'block';
+                fechaIndefinidaContainer.style.display = 'none';
+                fechaIndefinidaInput.checked = false;
+            }
+        });
+
+        // Validar fechas
+        document.getElementById('fecha_inicio').addEventListener('change', validateDates);
+        document.getElementById('fecha_fin').addEventListener('change', validateDates);
+
+        function validateDates() {
+            const fechaInicio = new Date(document.getElementById('fecha_inicio').value);
+            const fechaFin = new Date(document.getElementById('fecha_fin').value);
+            
+            if (document.getElementById('fecha_fin').value && fechaFin < fechaInicio) {
+                alert('La fecha de fin no puede ser anterior a la fecha de inicio.');
+                document.getElementById('fecha_fin').value = '';
+            }
+        }
+
+        // Manejar archivo adjunto
+        document.getElementById('documento_adjunto').addEventListener('change', function() {
+            const file = this.files[0];
+            const fileSelectedDiv = document.getElementById('file-selected');
+            
+            if (file) {
+                const fileSize = (file.size / 1024 / 1024).toFixed(2);
+                fileSelectedDiv.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-file me-2"></i>
+                        <strong>${file.name}</strong> (${fileSize} MB)
+                        <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="clearFile()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `;
+                fileSelectedDiv.style.display = 'block';
+            } else {
+                fileSelectedDiv.style.display = 'none';
+            }
+        });
+
+        function clearFile() {
+            document.getElementById('documento_adjunto').value = '';
+            document.getElementById('file-selected').style.display = 'none';
+        }
 
         // Validación del formulario
         document.getElementById('formAusencia').addEventListener('submit', function(e) {
-            if (!policiaSeleccionado) {
+            if (!selectedPoliciaId) {
                 e.preventDefault();
-                alert('Por favor, selecciona un policía.');
-                return;
+                alert('Debe seleccionar un policía.');
+                return false;
             }
-
-            const fechaInicio = document.querySelector('input[name="fecha_inicio"]').value;
-            const fechaFin = document.querySelector('input[name="fecha_fin"]').value;
-
-            if (fechaFin && fechaFin < fechaInicio) {
+            
+            const tipoAusencia = document.getElementById('tipo_ausencia_id').value;
+            if (!tipoAusencia) {
                 e.preventDefault();
-                alert('La fecha de fin no puede ser anterior a la fecha de inicio.');
-                return;
+                alert('Debe seleccionar un tipo de ausencia.');
+                return false;
+            }
+            
+            const fechaInicio = document.getElementById('fecha_inicio').value;
+            if (!fechaInicio) {
+                e.preventDefault();
+                alert('Debe especificar la fecha de inicio.');
+                return false;
+            }
+        });
+
+        // Drag and drop para archivos
+        const fileUploadArea = document.querySelector('.file-upload-area');
+        
+        fileUploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.classList.add('dragover');
+        });
+        
+        fileUploadArea.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            this.classList.remove('dragover');
+        });
+        
+        fileUploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                document.getElementById('documento_adjunto').files = files;
+                document.getElementById('documento_adjunto').dispatchEvent(new Event('change'));
             }
         });
     </script>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

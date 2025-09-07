@@ -20,17 +20,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['legajo'])) {
     }
     
     $check_legajo = $conn->prepare("SELECT id FROM policias WHERE legajo = ? AND activo = 1");
-    $check_legajo->bind_param("i", $legajo);
-    $check_legajo->execute();
-    $result = $check_legajo->get_result();
+    $check_legajo->execute([$legajo]);
     
-    if ($result->num_rows > 0) {
+    if ($check_legajo->rowCount() > 0) {
         echo json_encode(['disponible' => false, 'mensaje' => 'Este legajo ya está en uso']);
     } else {
         echo json_encode(['disponible' => true, 'mensaje' => 'Legajo disponible']);
     }
-    
-    $check_legajo->close();
 } else {
     echo json_encode(['error' => 'Datos inválidos']);
 }

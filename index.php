@@ -11,12 +11,10 @@ if ($_POST) {
     if (!empty($nombre_usuario) && !empty($contraseña)) {
         $sql = "SELECT id, nombre_usuario, contraseña, nombre_completo, rol, activo FROM usuarios WHERE nombre_usuario = ? AND activo = 1";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("s", $nombre_usuario);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        $stmt->execute([$nombre_usuario]);
         
-        if ($result->num_rows == 1) {
-            $usuario = $result->fetch_assoc();
+        if ($stmt->rowCount() == 1) {
+            $usuario = $stmt->fetch();
             
             if (password_verify($contraseña, $usuario['contraseña'])) {
                 $_SESSION['usuario_id'] = $usuario['id'];
@@ -37,7 +35,7 @@ if ($_POST) {
         } else {
             $error = "Usuario no encontrado";
         }
-        $stmt->close();
+        $stmt = null;
     } else {
         $error = "Por favor complete todos los campos";
     }

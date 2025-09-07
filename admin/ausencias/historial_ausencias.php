@@ -7,48 +7,52 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
-// Búsqueda AJAX
-if (isset($_GET['buscar'])) {
-    $termino = $_GET['buscar'];
-    
-    $sql = "SELECT a.*, p.nombre, p.apellido, p.cin, g.nombre as grado, ta.nombre as tipo_ausencia,
-                   u.nombre_completo as aprobado_por_nombre
-            FROM ausencias a
-            JOIN policias p ON a.policia_id = p.id
-            JOIN grados g ON p.grado_id = g.id
-            JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id
-            LEFT JOIN usuarios u ON a.aprobado_por = u.id
-            WHERE (p.nombre LIKE ? OR p.apellido LIKE ? OR p.cin LIKE ?)
-            ORDER BY a.created_at DESC
-            LIMIT 50";
-    
-    $stmt = $conn->prepare($sql);
-    $busqueda = "%$termino%";
-    $stmt->bind_param('sss', $busqueda, $busqueda, $busqueda);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    $ausencias = [];
-    while ($row = $result->fetch_assoc()) {
-        $ausencias[] = $row;
-    }
-    
-    header('Content-Type: application/json');
-    echo json_encode($ausencias);
-    exit();
-}
+// Obtener historial de ausencias (ausencias que no están activas y NO son por Junta Médica)
+$sql_historial = "SELECT 
+    a.id,
+    a.estado,
+    a.fecha_inicio,
+    a.fecha_fin,
+    a.descripcion,
+    a.created_at,
+    a.updated_at,
+    p.nombre,
+    p.apellido,
+    p.cin,
+    g.nombre as grado,
+    ta.nombre as tipo_ausencia,
+    u.nombre_completo as aprobado_por,
+    CASE 
+        WHEN a.estado = 'APROBADA' THEN 'Completada'
+        WHEN a.estado = 'RECHAZADA' THEN 'Rechazada'
+        ELSE a.estado
+    END as estado_final,
+    CASE 
+        WHEN a.fecha_fin < CURDATE() AND a.estado = 'APROBADA' THEN 'Finalizada'
+        WHEN a.estado = 'RECHAZADA' THEN 'Rechazada'
+        ELSE 'Completada'
+    END as estado_historial
+FROM ausencias a
+JOIN policias p ON a.policia_id = p.id
+LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+LEFT JOIN grados g ON tg.grado_id = g.id
+JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id
+LEFT JOIN usuarios u ON a.aprobado_por = u.id
+WHERE a.estado IN ('APROBADA', 'RECHAZADA') AND ta.nombre != 'Junta Medica'
+ORDER BY a.updated_at DESC, a.created_at DESC";
 
-// Obtener todas las ausencias por defecto
-$sql_ausencias = "SELECT a.*, p.nombre, p.apellido, p.cin, g.nombre as grado, ta.nombre as tipo_ausencia,
-                         u.nombre_completo as aprobado_por_nombre
-                  FROM ausencias a
-                  JOIN policias p ON a.policia_id = p.id
-                  JOIN grados g ON p.grado_id = g.id
-                  JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id
-                  LEFT JOIN usuarios u ON a.aprobado_por = u.id
-                  ORDER BY a.created_at DESC
-                  LIMIT 100";
-$result_ausencias = $conn->query($sql_ausencias);
+$result_historial = $conn->prepare($sql_historial);
+$result_historial->execute();
+
+// Obtener estadísticas del historial (excluyendo Junta Médica)
+$sql_stats = "SELECT 
+    (SELECT COUNT(*) FROM ausencias a JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id WHERE a.estado = 'APROBADA' AND ta.nombre != 'Junta Medica') as completadas,
+    (SELECT COUNT(*) FROM ausencias a JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id WHERE a.estado = 'RECHAZADA' AND ta.nombre != 'Junta Medica') as rechazadas,
+    (SELECT COUNT(*) FROM ausencias a JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id WHERE a.estado = 'APROBADA' AND a.fecha_fin < CURDATE() AND ta.nombre != 'Junta Medica') as finalizadas";
+
+$result_stats = $conn->prepare($sql_stats);
+$result_stats->execute();
+$stats = $result_stats->fetch(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -61,13 +65,13 @@ $result_ausencias = $conn->query($sql_ausencias);
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         :root {
-            --primary-color: #2c3e50;
-            --secondary-color: #3498db;
+            --primary-color: #104c75;
+            --secondary-color: #0d3d5c;
             --success-color: #27ae60;
             --warning-color: #f39c12;
             --danger-color: #e74c3c;
+            --info-color: #17a2b8;
             --light-bg: #f8f9fa;
-            --border-color: #dee2e6;
         }
 
         body {
@@ -76,329 +80,225 @@ $result_ausencias = $conn->query($sql_ausencias);
         }
 
         .main-content {
-            margin-left: 250px;
             padding: 20px;
-            transition: margin-left 0.3s ease;
-        }
-
-        @media (max-width: 768px) {
-            .main-content {
-                margin-left: 0;
-                padding: 15px;
-            }
+            min-height: 100vh;
         }
 
         .page-header {
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
             color: white;
-            padding: 20px;
+            padding: 2rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 15px rgba(16, 76, 117, 0.2);
+        }
+
+        .stats-card {
+            background: white;
             border-radius: 10px;
-            margin-bottom: 25px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 4px solid var(--primary-color);
         }
 
-        .search-card {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 25px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            border: 1px solid var(--border-color);
-        }
-
-        .results-card {
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            border: 1px solid var(--border-color);
-        }
-
-        .search-input {
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-            padding: 12px 15px;
-            font-size: 16px;
-            transition: all 0.3s ease;
-        }
-
-        .search-input:focus {
-            border-color: var(--secondary-color);
-            box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+        .stats-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--primary-color);
         }
 
         .table-container {
-            border-radius: 8px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             overflow: hidden;
-            border: 1px solid var(--border-color);
         }
 
-        .table {
-            margin-bottom: 0;
-        }
-
-        .table thead {
-            background: linear-gradient(135deg, var(--primary-color), #34495e);
-            color: white;
-        }
-
-        .table thead th {
+        .btn-primary {
+            background: var(--primary-color);
             border: none;
-            font-weight: 500;
-            padding: 15px 10px;
-        }
-
-        .table tbody tr {
-            transition: background-color 0.2s;
-        }
-
-        .table tbody tr:hover {
-            background-color: #f8f9fa;
-        }
-
-        .badge {
-            font-size: 0.75em;
-            padding: 5px 8px;
-            border-radius: 6px;
-        }
-
-        .badge-warning {
-            background-color: var(--warning-color);
-        }
-
-        .badge-success {
-            background-color: var(--success-color);
-        }
-
-        .badge-danger {
-            background-color: var(--danger-color);
-        }
-
-        .badge-secondary {
-            background-color: #6c757d;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #6c757d;
-        }
-
-        .no-results {
-            text-align: center;
-            padding: 40px;
-            color: #6c757d;
-        }
-
-        .btn-outline-primary {
-            border-color: var(--secondary-color);
-            color: var(--secondary-color);
             border-radius: 8px;
+            padding: 12px 24px;
+            font-weight: 500;
+            transition: all 0.3s ease;
         }
 
-        .btn-outline-primary:hover {
-            background-color: var(--secondary-color);
-            border-color: var(--secondary-color);
+        .btn-primary:hover {
+            background: var(--secondary-color);
+            transform: translateY(-2px);
+        }
+
+        .status-badge {
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-completada {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .status-rechazada {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-finalizada {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+
+        .filter-section {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
     </style>
 </head>
 <body>
-    <?php include '../inc/sidebar.php'; ?>
-    
-    <div class="main-content">
-        <!-- Header -->
-        <div class="page-header">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="mb-1"><i class="fas fa-history me-2"></i>Historial de Ausencias</h2>
-                    <p class="mb-0 opacity-75">Consulta el historial completo de ausencias del personal</p>
-                </div>
-                <div>
-                    <a href="index.php" class="btn btn-outline-light">
-                        <i class="fas fa-arrow-left me-2"></i>Volver a Gestión
-                    </a>
-                </div>
-            </div>
-        </div>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <?php include '../inc/sidebar.php'; ?>
+            
+            <!-- Contenido Principal -->
+            <div class="col-md-9 col-lg-10">
+                <div class="main-content">
+                    <!-- Mensajes de alerta -->
+                    <?php if (isset($_SESSION['mensaje'])): ?>
+                    <div class="alert alert-<?php echo $_SESSION['tipo_mensaje']; ?> alert-dismissible fade show" role="alert">
+                        <i class="fas fa-info-circle me-2"></i><?php echo $_SESSION['mensaje']; ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    <?php 
+                    unset($_SESSION['mensaje']);
+                    unset($_SESSION['tipo_mensaje']);
+                    endif; ?>
 
-        <!-- Búsqueda -->
-        <div class="search-card">
-            <div class="row align-items-center">
-                <div class="col-md-8">
-                    <div class="input-group">
-                        <span class="input-group-text">
-                            <i class="fas fa-search"></i>
-                        </span>
-                        <input type="text" id="buscarInput" class="form-control search-input" 
-                               placeholder="Buscar por nombre, apellido o CI del policía..." autocomplete="off">
+                    <!-- Header -->
+                    <div class="page-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h1><i class="fas fa-history me-2"></i>Historial de Ausencias</h1>
+                                <p>Registro completo de ausencias finalizadas, rechazadas o completadas (excluyendo Junta Médica)</p>
+                            </div>
+                            <div>
+                                <a href="index.php" class="btn btn-primary me-2">
+                                    <i class="fas fa-arrow-left me-1"></i>Volver a Ausencias
+                                </a>
+                                <a href="historial_junta.php" class="btn btn-warning">
+                                    <i class="fas fa-user-md me-1"></i>Junta Médica
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Estadísticas -->
+                    <div class="row mb-4">
+                        <div class="col-md-4 mb-3">
+                            <div class="stats-card text-center">
+                                <div class="stats-number"><?php echo $stats['completadas']; ?></div>
+                                <div class="text-muted">Ausencias Completadas</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="stats-card text-center">
+                                <div class="stats-number"><?php echo $stats['rechazadas']; ?></div>
+                                <div class="text-muted">Ausencias Rechazadas</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="stats-card text-center">
+                                <div class="stats-number"><?php echo $stats['finalizadas']; ?></div>
+                                <div class="text-muted">Ausencias Finalizadas</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabla de Historial -->
+                    <div class="table-container">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Policía</th>
+                                        <th>Grado</th>
+                                        <th>Tipo</th>
+                                        <th>Fechas</th>
+                                        <th>Duración</th>
+                                        <th>Estado Final</th>
+                                        <th>Registrado</th>
+                                        <th>Aprobado Por</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php while ($historial = $result_historial->fetch(PDO::FETCH_ASSOC)): 
+                                        $duracion = '';
+                                        if ($historial['fecha_fin']) {
+                                            $inicio = new DateTime($historial['fecha_inicio']);
+                                            $fin = new DateTime($historial['fecha_fin']);
+                                            $diff = $inicio->diff($fin);
+                                            $duracion = $diff->days . ' día(s)';
+                                        } else {
+                                            $duracion = 'Fecha única';
+                                        }
+                                    ?>
+                                    <tr>
+                                        <td>
+                                            <strong><?php echo htmlspecialchars($historial['apellido'] . ', ' . $historial['nombre']); ?></strong>
+                                            <br>
+                                            <small class="text-muted">CI: <?php echo htmlspecialchars($historial['cin']); ?></small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary"><?php echo htmlspecialchars($historial['grado']); ?></span>
+                                        </td>
+                                        <td><?php echo htmlspecialchars($historial['tipo_ausencia']); ?></td>
+                                        <td>
+                                            <small>
+                                                Inicio: <?php echo date('d/m/Y', strtotime($historial['fecha_inicio'])); ?><br>
+                                                <?php if ($historial['fecha_fin']): ?>
+                                                Fin: <?php echo date('d/m/Y', strtotime($historial['fecha_fin'])); ?>
+                                                <?php else: ?>
+                                                <span class="text-muted">Fecha única</span>
+                                                <?php endif; ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-info"><?php echo $duracion; ?></span>
+                                        </td>
+                                        <td>
+                                            <span class="status-badge status-<?php echo strtolower($historial['estado_historial']); ?>">
+                                                <?php echo $historial['estado_historial']; ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <small><?php echo date('d/m/Y H:i', strtotime($historial['created_at'])); ?></small>
+                                        </td>
+                                        <td>
+                                            <small><?php echo $historial['aprobado_por'] ? htmlspecialchars($historial['aprobado_por']) : '<span class="text-muted">-</span>'; ?></small>
+                                        </td>
+                                    </tr>
+                                    <?php endwhile; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <?php if ($result_historial->rowCount() == 0): ?>
+                        <div class="text-center py-5">
+                            <i class="fas fa-calendar-check text-muted" style="font-size: 3rem;"></i>
+                            <h5 class="text-muted mt-3">No hay registros en el historial</h5>
+                            <p class="text-muted">El historial se llenará a medida que se completen o rechacen ausencias.</p>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
-                <div class="col-md-4 text-end">
-                    <button type="button" class="btn btn-outline-primary" onclick="limpiarBusqueda()">
-                        <i class="fas fa-times me-2"></i>Limpiar
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Resultados -->
-        <div class="results-card">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h4 class="mb-0">
-                    <i class="fas fa-list me-2"></i>Resultados
-                </h4>
-                <span id="contador" class="badge bg-info">Cargando...</span>
-            </div>
-
-            <div id="loading" class="loading" style="display: none;">
-                <i class="fas fa-spinner fa-spin me-2"></i>Buscando...
-            </div>
-
-            <div class="table-container">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Policía</th>
-                            <th>Grado</th>
-                            <th>Tipo</th>
-                            <th>Fechas</th>
-                            <th>Estado</th>
-                            <th>Descripción</th>
-                            <th>Fecha Registro</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tablaResultados">
-                        <!-- Los resultados se cargarán aquí -->
-                    </tbody>
-                </table>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        let timeoutId;
-        let ausenciasIniciales = [];
-
-        // Cargar datos iniciales
-        document.addEventListener('DOMContentLoaded', function() {
-            cargarAusenciasIniciales();
-        });
-
-        // Búsqueda en tiempo real
-        document.getElementById('buscarInput').addEventListener('input', function() {
-            const termino = this.value.trim();
-            
-            clearTimeout(timeoutId);
-            
-            if (termino.length === 0) {
-                mostrarAusencias(ausenciasIniciales);
-                return;
-            }
-            
-            if (termino.length < 2) {
-                return;
-            }
-            
-            document.getElementById('loading').style.display = 'block';
-            
-            timeoutId = setTimeout(() => {
-                buscarAusencias(termino);
-            }, 300);
-        });
-
-        function cargarAusenciasIniciales() {
-            <?php 
-            $ausencias_json = [];
-            $result_ausencias->data_seek(0);
-            while ($row = $result_ausencias->fetch_assoc()) {
-                $ausencias_json[] = $row;
-            }
-            echo 'ausenciasIniciales = ' . json_encode($ausencias_json) . ';';
-            ?>
-            mostrarAusencias(ausenciasIniciales);
-        }
-
-        function buscarAusencias(termino) {
-            fetch(`?buscar=${encodeURIComponent(termino)}`)
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('loading').style.display = 'none';
-                    mostrarAusencias(data);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    document.getElementById('loading').style.display = 'none';
-                });
-        }
-
-        function mostrarAusencias(ausencias) {
-            const tbody = document.getElementById('tablaResultados');
-            const contador = document.getElementById('contador');
-            
-            contador.textContent = `${ausencias.length} registros`;
-            
-            if (ausencias.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="7" class="no-results">
-                            <i class="fas fa-search me-2"></i>No se encontraron ausencias
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-            
-            tbody.innerHTML = ausencias.map(ausencia => {
-                const fechaInicio = new Date(ausencia.fecha_inicio).toLocaleDateString('es-ES');
-                const fechaFin = ausencia.fecha_fin ? new Date(ausencia.fecha_fin).toLocaleDateString('es-ES') : 'Sin fecha fin';
-                const fechaRegistro = new Date(ausencia.created_at).toLocaleDateString('es-ES');
-                
-                let badgeClass = '';
-                switch(ausencia.estado) {
-                    case 'PENDIENTE': badgeClass = 'badge-warning'; break;
-                    case 'APROBADA': badgeClass = 'badge-success'; break;
-                    case 'RECHAZADA': badgeClass = 'badge-danger'; break;
-                    case 'COMPLETADA': badgeClass = 'badge-secondary'; break;
-                    default: badgeClass = 'bg-secondary';
-                }
-                
-                return `
-                    <tr>
-                        <td>
-                            <div>
-                                <strong>${ausencia.apellido}, ${ausencia.nombre}</strong>
-                                <br><small class="text-muted">CI: ${ausencia.cin}</small>
-                            </div>
-                        </td>
-                        <td>${ausencia.grado}</td>
-                        <td>
-                            <span class="badge bg-secondary">${ausencia.tipo_ausencia}</span>
-                        </td>
-                        <td>
-                            <small>
-                                <strong>Inicio:</strong> ${fechaInicio}<br>
-                                <strong>Fin:</strong> ${fechaFin}
-                            </small>
-                        </td>
-                        <td>
-                            <span class="badge ${badgeClass}">${ausencia.estado}</span>
-                        </td>
-                        <td>
-                            <small>${ausencia.descripcion ? ausencia.descripcion.substring(0, 40) + '...' : 'Sin descripción'}</small>
-                        </td>
-                        <td>
-                            <small>${fechaRegistro}</small>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        function limpiarBusqueda() {
-            document.getElementById('buscarInput').value = '';
-            mostrarAusencias(ausenciasIniciales);
-        }
-    </script>
 </body>
 </html>

@@ -8,6 +8,9 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
+// Obtener lugares de guardia para el filtro
+$lugares_guardias = $conn->query("SELECT id, nombre FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
+
 // Generar reportes según el tipo seleccionado
 $reporte_tipo = $_GET['tipo'] ?? '';
 $fecha_inicio = $_GET['fecha_inicio'] ?? date('Y-m-01');
@@ -26,7 +29,8 @@ if ($reporte_tipo) {
                        r.nombre as region, lg.nombre as lugar_guardia, 
                        p.telefono, p.updated_at as fecha_deshabilitacion
                 FROM policias p
-                LEFT JOIN grados g ON p.grado_id = g.id
+                LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+                LEFT JOIN grados g ON tg.grado_id = g.id
                 LEFT JOIN regiones r ON p.region_id = r.id
                 LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
                 WHERE p.activo = 0
@@ -41,7 +45,8 @@ if ($reporte_tipo) {
                        g.nombre as grado_jefe
                 FROM servicios s
                 LEFT JOIN policias p ON s.jefe_servicio_id = p.id
-                LEFT JOIN grados g ON p.grado_id = g.id
+                LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+                LEFT JOIN grados g ON tg.grado_id = g.id
                 WHERE s.fecha_servicio BETWEEN ? AND ?
                 ORDER BY s.fecha_servicio DESC
             ");
@@ -57,7 +62,8 @@ if ($reporte_tipo) {
                        a.fecha_inicio, a.fecha_fin, a.estado, a.descripcion
                 FROM ausencias a
                 JOIN policias p ON a.policia_id = p.id
-                JOIN grados g ON p.grado_id = g.id
+                LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+                LEFT JOIN grados g ON tg.grado_id = g.id
                 JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id
                 WHERE a.fecha_inicio BETWEEN ? AND ?
                 ORDER BY a.fecha_inicio DESC
@@ -74,7 +80,8 @@ if ($reporte_tipo) {
                        lguar.nombre as lugar_guardia
                 FROM lista_guardias lg
                 JOIN policias p ON lg.policia_id = p.id
-                JOIN grados g ON p.grado_id = g.id
+                LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+                LEFT JOIN grados g ON tg.grado_id = g.id
                 LEFT JOIN lugares_guardias lguar ON p.lugar_guardia_id = lguar.id
                 WHERE p.activo = 1
                 ORDER BY lg.posicion ASC
@@ -93,7 +100,8 @@ if ($reporte_tipo) {
                            gr.created_at as fecha_registro
                     FROM guardias_realizadas gr
                     JOIN policias p ON gr.policia_id = p.id
-                    JOIN grados g ON p.grado_id = g.id
+                    LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+                    LEFT JOIN grados g ON tg.grado_id = g.id
                     JOIN lugares_guardias lg ON gr.lugar_guardia_id = lg.id
                     WHERE DATE(gr.fecha_inicio) = ?
                     ORDER BY lg.nombre ASC, gr.fecha_inicio DESC
@@ -109,7 +117,8 @@ if ($reporte_tipo) {
                            gr.created_at as fecha_registro
                     FROM guardias_realizadas gr
                     JOIN policias p ON gr.policia_id = p.id
-                    JOIN grados g ON p.grado_id = g.id
+                    LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+                    LEFT JOIN grados g ON tg.grado_id = g.id
                     JOIN lugares_guardias lg ON gr.lugar_guardia_id = lg.id
                     WHERE gr.fecha_inicio BETWEEN ? AND ?
                     ORDER BY lg.nombre ASC, gr.fecha_inicio DESC
@@ -136,7 +145,8 @@ if ($reporte_tipo) {
                         DAYOFWEEK(gr.fecha_inicio) as dia_semana_num
                     FROM guardias_realizadas gr
                     JOIN policias p ON gr.policia_id = p.id
-                    LEFT JOIN grados g ON p.grado_id = g.id
+                    LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+                    LEFT JOIN grados g ON tg.grado_id = g.id
                     LEFT JOIN regiones r ON p.region_id = r.id
                     LEFT JOIN lugares_guardias lg ON gr.lugar_guardia_id = lg.id
                     WHERE DAYOFWEEK(gr.fecha_inicio) = ?
@@ -156,7 +166,8 @@ if ($reporte_tipo) {
                        DATEDIFF(COALESCE(a.fecha_fin, CURDATE()), a.fecha_inicio) + 1 as dias_ausencia
                 FROM ausencias a
                 JOIN policias p ON a.policia_id = p.id
-                JOIN grados g ON p.grado_id = g.id
+                LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+                LEFT JOIN grados g ON tg.grado_id = g.id
                 JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id
                 WHERE a.estado = 'APROBADA' 
                 AND (a.fecha_fin IS NULL OR a.fecha_fin >= CURDATE())
@@ -364,6 +375,44 @@ $dias_semana = [
                                 </a>
                             </div>
                         </div>
+                        
+                        <!-- Buscador y Filtros -->
+                        <div class="card-body border-bottom no-print">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                        <input type="text" class="form-control" id="searchInput" placeholder="Buscar personal por nombre, apellido, CIN, grado...">
+                                        <button class="btn btn-outline-secondary" type="button" id="clearSearch" style="display: none;">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted" id="searchInfo"></small>
+                                </div>
+                                <?php if (in_array($reporte_tipo, ['guardias_rotacion', 'guardias_realizadas', 'policias_deshabilitados'])): ?>
+                                <div class="col-md-4">
+                                    <select class="form-select" id="filtroLugarGuardia">
+                                        <option value="">Todos los lugares de guardia</option>
+                                        <?php 
+                                        if ($lugares_guardias && $lugares_guardias->num_rows > 0) {
+                                            $lugares_guardias->data_seek(0);
+                                            while ($lugar = $lugares_guardias->fetch_assoc()): 
+                                        ?>
+                                        <option value="<?php echo htmlspecialchars($lugar['nombre']); ?>"><?php echo htmlspecialchars($lugar['nombre']); ?></option>
+                                        <?php 
+                                            endwhile;
+                                        }
+                                        ?>
+                                    </select>
+                                </div>
+                                <?php endif; ?>
+                                <div class="col-md-2">
+                                    <button class="btn btn-outline-secondary w-100" id="limpiarFiltros">
+                                        <i class="fas fa-eraser"></i> Limpiar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                         <div class="card-body">
                             <?php if ($reporte_tipo == 'guardias_por_dia'): ?>
                                 <?php if (!$tiene_guardias): ?>
@@ -394,18 +443,17 @@ $dias_semana = [
                                             </thead>
                                             <tbody>
                                                 <?php while ($row = $reportes_data->fetch_assoc()): ?>
-                                                <tr>
+                                                <?php 
+                                                $nombre_completo = '';
+                                                if (!empty($row['grado_abreviatura'])) {
+                                                    $nombre_completo = $row['grado_abreviatura'] . ' ';
+                                                }
+                                                $nombre_completo .= $row['apellido'] . ', ' . $row['nombre'];
+                                                $data_search = strtolower($nombre_completo . ' ' . $row['telefono'] . ' ' . $row['region'] . ' ' . $row['lugar_guardia']);
+                                                ?>
+                                                <tr class="reporte-row" data-search="<?= htmlspecialchars($data_search) ?>">
                                                     <td><?= date('d/m/Y', strtotime($row['fecha_inicio'])) ?></td>
-                                                    <td>
-                                                        <?php 
-                                                        $nombre_completo = '';
-                                                        if (!empty($row['grado_abreviatura'])) {
-                                                            $nombre_completo = $row['grado_abreviatura'] . ' ';
-                                                        }
-                                                        $nombre_completo .= $row['apellido'] . ', ' . $row['nombre'];
-                                                        echo htmlspecialchars($nombre_completo);
-                                                        ?>
-                                                    </td>
+                                                    <td><?= htmlspecialchars($nombre_completo) ?></td>
                                                     <td><?= $row['telefono'] ?: 'No registrado' ?></td>
                                                     <td><?= htmlspecialchars($row['region']) ?></td>
                                                     <td><?= htmlspecialchars($row['lugar_guardia']) ?></td>
@@ -460,7 +508,31 @@ $dias_semana = [
                                     </thead>
                                     <tbody>
                                         <?php while ($row = $reportes_data->fetch_assoc()): ?>
-                                        <tr>
+                                        <?php 
+                                        // Generar data-search según el tipo de reporte
+                                        $data_search = '';
+                                        switch ($reporte_tipo) {
+                                            case 'policias_deshabilitados':
+                                                $data_search = strtolower($row['legajo'] . ' ' . $row['nombre'] . ' ' . $row['apellido'] . ' ' . $row['cin'] . ' ' . $row['grado'] . ' ' . $row['comisionamiento'] . ' ' . $row['region'] . ' ' . ($row['lugar_guardia'] ?? 'no asignado') . ' ' . $row['telefono']);
+                                                break;
+                                            case 'servicios_periodo':
+                                                $data_search = strtolower($row['nombre'] . ' ' . ($row['jefe_servicio'] ?? '') . ' ' . ($row['grado_jefe'] ?? '') . ' ' . $row['descripcion']);
+                                                break;
+                                            case 'ausencias_periodo':
+                                                $data_search = strtolower($row['policia'] . ' ' . $row['cin'] . ' ' . $row['grado'] . ' ' . $row['tipo_ausencia'] . ' ' . $row['estado'] . ' ' . $row['descripcion']);
+                                                break;
+                                            case 'guardias_rotacion':
+                                                $data_search = strtolower($row['policia'] . ' ' . $row['cin'] . ' ' . $row['grado'] . ' ' . ($row['lugar_guardia'] ?? 'no asignado'));
+                                                break;
+                                            case 'guardias_realizadas':
+                                                $data_search = strtolower($row['policia'] . ' ' . $row['cin'] . ' ' . $row['grado'] . ' ' . $row['lugar_guardia']);
+                                                break;
+                                            case 'ausentes_activos':
+                                                $data_search = strtolower($row['policia'] . ' ' . $row['cin'] . ' ' . $row['grado'] . ' ' . $row['tipo_ausencia'] . ' ' . $row['descripcion']);
+                                                break;
+                                        }
+                                        ?>
+                                        <tr class="reporte-row" data-search="<?= htmlspecialchars($data_search) ?>">
                                             <?php 
                                             // Mostrar datos según el tipo de reporte
                                             switch ($reporte_tipo) {
@@ -630,6 +702,103 @@ $dias_semana = [
             
             window.location.href = `?tipo=${currentReportType}&dia_semana=${diaSemana}`;
         });
+        
+        // Funcionalidad del buscador en tiempo real
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('searchInput');
+            const clearButton = document.getElementById('clearSearch');
+            const searchInfo = document.getElementById('searchInfo');
+            const filtroLugarGuardia = document.getElementById('filtroLugarGuardia');
+            const limpiarFiltros = document.getElementById('limpiarFiltros');
+            
+            if (searchInput) {
+                searchInput.addEventListener('input', function() {
+                    const searchTerm = this.value.toLowerCase().trim();
+                    
+                    if (searchTerm.length > 0) {
+                        clearButton.style.display = 'block';
+                    } else {
+                        clearButton.style.display = 'none';
+                    }
+                    
+                    aplicarFiltros();
+                });
+                
+                clearButton.addEventListener('click', function() {
+                    searchInput.value = '';
+                    this.style.display = 'none';
+                    aplicarFiltros();
+                    searchInput.focus();
+                });
+            }
+            
+            if (filtroLugarGuardia) {
+                filtroLugarGuardia.addEventListener('change', aplicarFiltros);
+            }
+            
+            if (limpiarFiltros) {
+                limpiarFiltros.addEventListener('click', function() {
+                    if (searchInput) {
+                        searchInput.value = '';
+                        clearButton.style.display = 'none';
+                    }
+                    if (filtroLugarGuardia) {
+                        filtroLugarGuardia.value = '';
+                    }
+                    aplicarFiltros();
+                });
+            }
+        });
+        
+        function aplicarFiltros() {
+            const searchInput = document.getElementById('searchInput');
+            const filtroLugarGuardia = document.getElementById('filtroLugarGuardia');
+            const searchInfo = document.getElementById('searchInfo');
+            
+            const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+            const lugarSeleccionado = filtroLugarGuardia ? filtroLugarGuardia.value.toLowerCase() : '';
+            
+            const filas = document.querySelectorAll('.reporte-row');
+            let filasVisibles = 0;
+            
+            filas.forEach(function(fila) {
+                const datosCompletos = fila.getAttribute('data-search');
+                let mostrar = true;
+                
+                // Filtro por búsqueda
+                if (searchTerm && !datosCompletos.includes(searchTerm)) {
+                    mostrar = false;
+                }
+                
+                // Filtro por lugar de guardia
+                if (lugarSeleccionado && !datosCompletos.includes(lugarSeleccionado)) {
+                    mostrar = false;
+                }
+                
+                if (mostrar) {
+                    fila.style.display = '';
+                    filasVisibles++;
+                } else {
+                    fila.style.display = 'none';
+                }
+            });
+            
+            // Actualizar información de búsqueda
+            if (searchInfo) {
+                if (searchTerm || lugarSeleccionado) {
+                    if (filasVisibles === 0) {
+                        searchInfo.textContent = 'No se encontraron resultados';
+                        searchInfo.className = 'text-warning';
+                    } else {
+                        searchInfo.textContent = `${filasVisibles} resultado(s) encontrado(s)`;
+                        searchInfo.className = 'text-success';
+                    }
+                } else {
+                    searchInfo.textContent = '';
+                    searchInfo.className = 'text-muted';
+                }
+            }
+        }
     </script>
 </body>
 </html>

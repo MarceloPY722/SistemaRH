@@ -20,20 +20,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 if (!empty($nombre)) {
                     $stmt = $conn->prepare("INSERT INTO especialidades (nombre, descripcion) VALUES (?, ?)");
-                    $stmt->bind_param("ss", $nombre, $descripcion);
                     
-                    if ($stmt->execute()) {
+                    if ($stmt->execute([$nombre, $descripcion])) {
                         $mensaje = 'Especialidad agregada exitosamente.';
                         $tipo_mensaje = 'success';
                     } else {
-                        if ($conn->errno == 1062) { // Duplicate entry
+                        $errorInfo = $stmt->errorInfo();
+                        if ($errorInfo[1] == 1062) { // Duplicate entry
                             $mensaje = 'Error: Ya existe una especialidad con ese nombre.';
                         } else {
-                            $mensaje = 'Error al agregar la especialidad: ' . $conn->error;
+                            $mensaje = 'Error al agregar la especialidad: ' . $errorInfo[2];
                         }
                         $tipo_mensaje = 'danger';
                     }
-                    $stmt->close();
                 } else {
                     $mensaje = 'El nombre de la especialidad es obligatorio.';
                     $tipo_mensaje = 'warning';
@@ -47,20 +46,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 if (!empty($nombre)) {
                     $stmt = $conn->prepare("UPDATE especialidades SET nombre = ?, descripcion = ? WHERE id = ?");
-                    $stmt->bind_param("ssi", $nombre, $descripcion, $id);
                     
-                    if ($stmt->execute()) {
+                    if ($stmt->execute([$nombre, $descripcion, $id])) {
                         $mensaje = 'Especialidad actualizada exitosamente.';
                         $tipo_mensaje = 'success';
                     } else {
-                        if ($conn->errno == 1062) { // Duplicate entry
+                        $errorInfo = $stmt->errorInfo();
+                        if ($errorInfo[1] == 1062) { // Duplicate entry
                             $mensaje = 'Error: Ya existe una especialidad con ese nombre.';
                         } else {
-                            $mensaje = 'Error al actualizar la especialidad: ' . $conn->error;
+                            $mensaje = 'Error al actualizar la especialidad: ' . $errorInfo[2];
                         }
                         $tipo_mensaje = 'danger';
                     }
-                    $stmt->close();
                 } else {
                     $mensaje = 'El nombre de la especialidad es obligatorio.';
                     $tipo_mensaje = 'warning';
@@ -72,27 +70,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 // Verificar si hay policías con esta especialidad
                 $stmt = $conn->prepare("SELECT COUNT(*) FROM policias WHERE especialidad_id = ?");
-                $stmt->bind_param("i", $id);
-                $stmt->execute();
-                $result = $stmt->get_result();
-                $count = $result->fetch_row()[0];
-                $stmt->close();
+                $stmt->execute([$id]);
+                $count = $stmt->fetchColumn();
                 
                 if ($count > 0) {
                     $mensaje = "No se puede eliminar la especialidad porque hay {$count} policía(s) asignado(s) a ella.";
                     $tipo_mensaje = 'warning';
                 } else {
                     $stmt = $conn->prepare("DELETE FROM especialidades WHERE id = ?");
-                    $stmt->bind_param("i", $id);
                     
-                    if ($stmt->execute()) {
+                    if ($stmt->execute([$id])) {
                         $mensaje = 'Especialidad eliminada exitosamente.';
                         $tipo_mensaje = 'success';
                     } else {
-                        $mensaje = 'Error al eliminar la especialidad: ' . $conn->error;
+                        $errorInfo = $stmt->errorInfo();
+                        $mensaje = 'Error al eliminar la especialidad: ' . $errorInfo[2];
                         $tipo_mensaje = 'danger';
                     }
-                    $stmt->close();
                 }
                 break;
         }
@@ -107,9 +101,7 @@ $query = "SELECT e.*,
 $result = $conn->query($query);
 $especialidades = [];
 if ($result) {
-    while ($row = $result->fetch_assoc()) {
-        $especialidades[] = $row;
-    }
+    $especialidades = $result->fetchAll(PDO::FETCH_ASSOC);
 }
 ?>
 

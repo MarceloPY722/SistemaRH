@@ -17,21 +17,21 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'reactivar') {
     if ($policia_id > 0) {
         $sql = "UPDATE policias SET activo = 1 WHERE id = ?";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $policia_id);
         
-        if ($stmt->execute()) {
+        if ($stmt->execute([$policia_id])) {
             $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle'></i> Policía reactivado exitosamente</div>";
         } else {
-            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Error al reactivar policía: " . $conn->error . "</div>";
+            $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamacion-triangle'></i> Error al reactivar policía: " . $stmt->errorInfo()[2] . "</div>";
         }
     }
 }
 
 // Obtener lista de policías deshabilitados
 $policias_deshabilitados = $conn->query("
-    SELECT p.*, g.nombre as grado_nombre, e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre
+    SELECT p.*, tg.nombre as grado_nombre, g.nombre as categoria_nombre, e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre
     FROM policias p
-    LEFT JOIN grados g ON p.grado_id = g.id
+    LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+    LEFT JOIN grados g ON tg.grado_id = g.id
     LEFT JOIN especialidades e ON p.especialidad_id = e.id
     LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
     LEFT JOIN regiones r ON p.region_id = r.id

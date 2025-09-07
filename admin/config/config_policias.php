@@ -344,6 +344,21 @@ require_once '../../cnx/db_connect.php';
                 </a>
             </div>
             
+            <!-- Eliminación de Policías -->
+            <div class="config-card">
+                <div class="config-icon">
+                    <i class="fas fa-user-times"></i>
+                </div>
+                <h3 class="config-title">Eliminar Policías</h3>
+                <p class="config-description">
+                    Elimina registros de policías del sistema. Maneja automáticamente 
+                    las referencias de foreign keys para una eliminación segura.
+                </p>
+                <a href="eliminar_policias.php" class="config-btn">
+                    <i class="fas fa-trash-alt"></i> Gestionar
+                </a>
+            </div>
+            
             <!-- Regiones -->
             <div class="config-card">
                 <div class="config-icon">
@@ -358,6 +373,36 @@ require_once '../../cnx/db_connect.php';
                     <i class="fas fa-cog"></i> Configurar
                 </a>
             </div>
+            
+            <!-- Tipos de Ausencias -->
+            <div class="config-card">
+                <div class="config-icon">
+                    <i class="fas fa-calendar-times"></i>
+                </div>
+                <h3 class="config-title">Tipos de Ausencias</h3>
+                <p class="config-description">
+                    Gestiona los tipos de ausencias disponibles en el sistema. 
+                    Configura categorías, descripciones y políticas de ausencias.
+                </p>
+                <a href="../ausencias/tipos_ausencias.php" class="config-btn">
+                    <i class="fas fa-cog"></i> Configurar
+                </a>
+            </div>
+            
+            <!-- Gestión Junta Médica -->
+            <div class="config-card">
+                <div class="config-icon">
+                    <i class="fas fa-user-md"></i>
+                </div>
+                <h3 class="config-title">Gestión Junta Médica</h3>
+                <p class="config-description">
+                    Administra automáticamente los policías con ausencias por Junta Médica. 
+                    Los mueve temporalmente a TELEFONISTA y los restaura al finalizar.
+                </p>
+                <a href="../ausencias/gestion_junta_medica.php" class="config-btn">
+                    <i class="fas fa-play"></i> Gestionar
+                </a>
+            </div>
         </div>
         
         <!-- Estadísticas rápidas -->
@@ -366,7 +411,7 @@ require_once '../../cnx/db_connect.php';
                 <div class="stat-card">
                     <?php
                     $especialidades = $conn->query("SELECT COUNT(*) as total FROM especialidades");
-                    $total_especialidades = $especialidades->fetch_assoc()['total'];
+                    $total_especialidades = $especialidades->fetch(PDO::FETCH_ASSOC)['total'];
                     ?>
                     <div class="stat-number"><?php echo $total_especialidades; ?></div>
                     <div class="stat-label">Especialidades</div>
@@ -376,7 +421,7 @@ require_once '../../cnx/db_connect.php';
                 <div class="stat-card">
                     <?php
                     $grados = $conn->query("SELECT COUNT(*) as total FROM grados");
-                    $total_grados = $grados->fetch_assoc()['total'];
+                    $total_grados = $grados->fetch(PDO::FETCH_ASSOC)['total'];
                     ?>
                     <div class="stat-number"><?php echo $total_grados; ?></div>
                     <div class="stat-label">Grados</div>
@@ -386,7 +431,7 @@ require_once '../../cnx/db_connect.php';
                 <div class="stat-card">
                     <?php
                     $lugares = $conn->query("SELECT COUNT(*) as total FROM lugares_guardias");
-                    $total_lugares = $lugares->fetch_assoc()['total'];
+                    $total_lugares = $lugares->fetch(PDO::FETCH_ASSOC)['total'];
                     ?>
                     <div class="stat-number"><?php echo $total_lugares; ?></div>
                     <div class="stat-label">Lugares de Guardia</div>
@@ -396,10 +441,24 @@ require_once '../../cnx/db_connect.php';
                 <div class="stat-card">
                     <?php
                     $regiones = $conn->query("SELECT COUNT(*) as total FROM regiones");
-                    $total_regiones = $regiones->fetch_assoc()['total'];
+                    $total_regiones = $regiones->fetch(PDO::FETCH_ASSOC)['total'];
                     ?>
                     <div class="stat-number"><?php echo $total_regiones; ?></div>
                     <div class="stat-label">Regiones</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Segunda fila de estadísticas -->
+        <div class="row stats-row">
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="stat-card">
+                    <?php
+                    $tipos_ausencias = $conn->query("SELECT COUNT(*) as total FROM tipos_ausencias");
+                    $total_tipos_ausencias = $tipos_ausencias->fetch(PDO::FETCH_ASSOC)['total'];
+                    ?>
+                    <div class="stat-number"><?php echo $total_tipos_ausencias; ?></div>
+                    <div class="stat-label">Tipos de Ausencias</div>
                 </div>
             </div>
         </div>

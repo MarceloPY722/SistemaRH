@@ -4,14 +4,12 @@ $username = "root"; // Cambiar por tu usuario de base de datos
 $password = ""; // Cambiar por tu contraseña de base de datos
 $dbname = "sistema_rh_policia"; // Nombre de tu base de datos
 
-// Crear conexión
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-// Verificar conexión
-if ($conn->connect_error) {
-    die("Error de conexión: " . $conn->connect_error);
+try {
+    // Crear conexión PDO
+    $conn = new PDO("mysql:host=$servername;dbname=$dbname;charset=utf8", $username, $password);
+    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $conn->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+} catch(PDOException $e) {
+    die("Error de conexión: " . $e->getMessage());
 }
-
-// Configurar charset
-$conn->set_charset("utf8");
 ?>

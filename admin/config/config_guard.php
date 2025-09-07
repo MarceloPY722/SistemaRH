@@ -24,16 +24,17 @@ if ($_POST && isset($_POST['action'])) {
         if ($success1 && $success2) {
             $mensaje = "<div class='alert alert-success'>Todas las guardias semanales y realizadas han sido eliminadas exitosamente.</div>";
         } else {
-            $mensaje = "<div class='alert alert-danger'>Error al eliminar las guardias: " . $conn->error . "</div>";
+            $mensaje = "<div class='alert alert-danger'>Error al eliminar las guardias.</div>";
         }
     } elseif ($_POST['action'] == 'eliminar_guardias_realizadas') {
         // Nueva opción: eliminar solo guardias realizadas
         $sql = "DELETE FROM guardias_realizadas";
-        if ($conn->query($sql)) {
-            $affected_rows = $conn->affected_rows;
+        $stmt = $conn->prepare($sql);
+        if ($stmt->execute()) {
+            $affected_rows = $stmt->rowCount();
             $mensaje = "<div class='alert alert-success'>Se eliminaron $affected_rows guardias realizadas exitosamente.</div>";
         } else {
-            $mensaje = "<div class='alert alert-danger'>Error al eliminar las guardias realizadas: " . $conn->error . "</div>";
+            $mensaje = "<div class='alert alert-danger'>Error al eliminar las guardias realizadas.</div>";
         }
     } elseif ($_POST['action'] == 'eliminar_por_fecha') {
         $fecha_inicio = $_POST['fecha_inicio'];
@@ -42,36 +43,64 @@ if ($_POST && isset($_POST['action'])) {
         $sql = "DELETE FROM guardias_semanales 
                 WHERE fecha_inicio BETWEEN ? AND ?";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ss", $fecha_inicio, $fecha_fin);
         
-        if ($stmt->execute()) {
-            $affected_rows = $stmt->affected_rows;
+        if ($stmt->execute([$fecha_inicio, $fecha_fin])) {
+            $affected_rows = $stmt->rowCount();
             $mensaje = "<div class='alert alert-success'>Se eliminaron $affected_rows guardias semanales del período seleccionado.</div>";
         } else {
-            $mensaje = "<div class='alert alert-danger'>Error al eliminar las guardias: " . $conn->error . "</div>";
+            $mensaje = "<div class='alert alert-danger'>Error al eliminar las guardias.</div>";
         }
     } elseif ($_POST['action'] == 'eliminar_por_id') {
         $guardia_id = $_POST['guardia_id'];
         
         $sql = "DELETE FROM guardias_semanales WHERE id = ?";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $guardia_id);
         
-        if ($stmt->execute()) {
-            if ($stmt->affected_rows > 0) {
+        if ($stmt->execute([$guardia_id])) {
+            if ($stmt->rowCount() > 0) {
                 $mensaje = "<div class='alert alert-success'>Guardia eliminada exitosamente.</div>";
             } else {
                 $mensaje = "<div class='alert alert-warning'>No se encontró la guardia especificada.</div>";
             }
         } else {
-            $mensaje = "<div class='alert alert-danger'>Error al eliminar la guardia: " . $conn->error . "</div>";
+            $mensaje = "<div class='alert alert-danger'>Error al eliminar la guardia.</div>";
         }
     } elseif ($_POST['action'] == 'resetear_guardias') {
         // Nueva funcionalidad: Resetear guardias (reorganizar lista)
-        if ($conn->query("CALL ReorganizarListaGuardias()")) {
+        try {
+            // Comenzar transacción
+            $conn->beginTransaction();
+            
+            // Limpiar lista actual
+            $conn->exec("DELETE FROM lista_guardias");
+            
+            // Obtener policías ordenados por jerarquía y legajo (como proxy de antigüedad)
+            $policias_sql = "SELECT p.id
+                            FROM policias p
+                            JOIN grados g ON p.grado_id = g.id
+                            WHERE p.activo = TRUE
+                            ORDER BY g.nivel_jerarquia ASC, p.legajo ASC, p.id ASC";
+            
+            // Nota: Se usa legajo como proxy de antigüedad (legajo menor = más antiguo)
+            
+            $result = $conn->query($policias_sql);
+            $posicion = 1;
+            
+            // Insertar policías en nueva lista ordenada
+            while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
+                $stmt = $conn->prepare("INSERT INTO lista_guardias (policia_id, posicion) VALUES (?, ?)");
+                $stmt->execute([$row['id'], $posicion]);
+                $posicion++;
+            }
+            
+            // Confirmar transacción
+            $conn->commit();
+            
             $mensaje = "<div class='alert alert-success'>Lista de guardias reorganizada exitosamente. Las posiciones han sido restablecidas.</div>";
-        } else {
-            $mensaje = "<div class='alert alert-danger'>Error al reorganizar la lista de guardias: " . $conn->error . "</div>";
+        } catch (Exception $e) {
+            // Revertir transacción en caso de error
+            $conn->rollBack();
+            $mensaje = "<div class='alert alert-danger'>Error al reorganizar la lista de guardias: " . $e->getMessage() . "</div>";
         }
     }
 }
@@ -191,7 +220,7 @@ $fecha_actual = date('Y-m-d');
                                     <h5><i class="fas fa-list"></i> Guardias Semanales Generadas</h5>
                                 </div>
                                 <div class="card-body">
-                                    <?php if ($guardias_result && $guardias_result->num_rows > 0): ?>
+                                    <?php if ($guardias_result && $guardias_result->rowCount() > 0): ?>
                                         <div class="table-responsive">
                                             <table class="table table-striped table-hover">
                                                 <thead class="table-dark">
@@ -207,7 +236,7 @@ $fecha_actual = date('Y-m-d');
                                                 </thead>
                                                 <tbody>
                                                     <tbody>
-                                                        <?php while ($guardia = $guardias_result->fetch_assoc()): ?>
+                                                        <?php while ($guardia = $guardias_result->fetch()): ?>
                                                             <tr>
                                                                 <td><?php echo $guardia['id']; ?></td>
                                                                 <td><?php echo date('d/m/Y', strtotime($guardia['fecha_inicio'])); ?></td>

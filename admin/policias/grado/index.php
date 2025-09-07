@@ -10,12 +10,19 @@ $mensaje = '';
 $tipo_mensaje = '';
 $grados = [];
 
-// Obtener lista de grados
-$result_grados = $conn->query("SELECT * FROM grados ORDER BY nivel_jerarquia ASC, nombre ASC");
-if ($result_grados) {
-    while ($row = $result_grados->fetch_assoc()) {
-        $grados[] = $row;
-    }
+// Obtener lista de tipo_grados con información de categoría
+$result_grados = $conn->prepare("SELECT tg.*, g.nombre as categoria_nombre FROM tipo_grados tg JOIN grados g ON tg.grado_id = g.id ORDER BY g.nivel_jerarquia ASC, tg.nivel_jerarquia ASC");
+$result_grados->execute();
+while ($row = $result_grados->fetch(PDO::FETCH_ASSOC)) {
+    $grados[] = $row;
+}
+
+// Obtener categorías de grados para el formulario
+$categorias = [];
+$result_categorias = $conn->prepare("SELECT * FROM grados ORDER BY nivel_jerarquia ASC");
+$result_categorias->execute();
+while ($row = $result_categorias->fetch(PDO::FETCH_ASSOC)) {
+    $categorias[] = $row;
 }
 
 // Procesar formularios
@@ -26,25 +33,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $nombre = trim($_POST['nombre_grado']);
                 $nivel_jerarquia = intval($_POST['nivel_grado']);
                 $abreviatura = trim($_POST['abreviatura_grado']);
+                $grado_id = intval($_POST['grado_id']);
                 
-                if (!empty($nombre) && $nivel_jerarquia > 0) {
-                    // Verificar si la consulta se prepara correctamente
-                    $stmt = $conn->prepare("INSERT INTO grados (nombre, nivel_jerarquia, abreviatura) VALUES (?, ?, ?)");
-                    
-                    if ($stmt === false) {
-                        $mensaje = "Error al preparar la consulta: " . $conn->error;
-                        $tipo_mensaje = "danger";
-                    } else {
-                        $stmt->bind_param("sis", $nombre, $nivel_jerarquia, $abreviatura);
+                if (!empty($nombre) && $nivel_jerarquia > 0 && $grado_id > 0) {
+                    try {
+                        $stmt = $conn->prepare("INSERT INTO tipo_grados (nombre, nivel_jerarquia, abreviatura, grado_id) VALUES (?, ?, ?, ?)");
                         
-                        if ($stmt->execute()) {
+                        if ($stmt->execute([$nombre, $nivel_jerarquia, $abreviatura, $grado_id])) {
                             $mensaje = "Grado agregado exitosamente.";
                             $tipo_mensaje = "success";
                         } else {
-                            $mensaje = "Error al agregar el grado: " . $stmt->error;
+                            $mensaje = "Error al agregar el grado.";
                             $tipo_mensaje = "danger";
                         }
-                        $stmt->close();
+                    } catch (PDOException $e) {
+                        $mensaje = "Error al agregar el grado: " . $e->getMessage();
+                        $tipo_mensaje = "danger";
                     }
                 } else {
                     $mensaje = "Por favor, complete todos los campos obligatorios.";
@@ -57,24 +61,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $nombre = trim($_POST['nombre']);
                 $nivel_jerarquia = intval($_POST['nivel_jerarquia']);
                 $abreviatura = trim($_POST['abreviatura']);
+                $grado_id = intval($_POST['grado_id']);
                 
-                if (!empty($nombre) && $nivel_jerarquia > 0 && $id > 0) {
-                    $stmt = $conn->prepare("UPDATE grados SET nombre = ?, nivel_jerarquia = ?, abreviatura = ? WHERE id = ?");
-                    
-                    if ($stmt === false) {
-                        $mensaje = "Error al preparar la consulta de actualización: " . $conn->error;
-                        $tipo_mensaje = "danger";
-                    } else {
-                        $stmt->bind_param("sisi", $nombre, $nivel_jerarquia, $abreviatura, $id);
+                if (!empty($nombre) && $nivel_jerarquia > 0 && $id > 0 && $grado_id > 0) {
+                    try {
+                        $stmt = $conn->prepare("UPDATE tipo_grados SET nombre = ?, nivel_jerarquia = ?, abreviatura = ?, grado_id = ? WHERE id = ?");
                         
-                        if ($stmt->execute()) {
+                        if ($stmt->execute([$nombre, $nivel_jerarquia, $abreviatura, $grado_id, $id])) {
                             $mensaje = "Grado actualizado exitosamente.";
                             $tipo_mensaje = "success";
                         } else {
-                            $mensaje = "Error al actualizar el grado: " . $stmt->error;
+                            $mensaje = "Error al actualizar el grado.";
                             $tipo_mensaje = "danger";
                         }
-                        $stmt->close();
+                    } catch (PDOException $e) {
+                        $mensaje = "Error al actualizar el grado: " . $e->getMessage();
+                        $tipo_mensaje = "danger";
                     }
                 } else {
                     $mensaje = "Por favor, complete todos los campos obligatorios.";
@@ -85,22 +87,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'eliminar_grado':
                 $grado_id = intval($_POST['grado_id']);
                 if ($grado_id > 0) {
-                    $stmt = $conn->prepare("DELETE FROM grados WHERE id = ?");
-                    
-                    if ($stmt === false) {
-                        $mensaje = "Error al preparar la consulta de eliminación: " . $conn->error;
-                        $tipo_mensaje = "danger";
-                    } else {
-                        $stmt->bind_param("i", $grado_id);
+                    try {
+                        $stmt = $conn->prepare("DELETE FROM tipo_grados WHERE id = ?");
                         
-                        if ($stmt->execute()) {
+                        if ($stmt->execute([$grado_id])) {
                             $mensaje = "Grado eliminado exitosamente.";
                             $tipo_mensaje = "success";
                         } else {
-                            $mensaje = "Error al eliminar el grado: " . $stmt->error;
+                            $mensaje = "Error al eliminar el grado.";
                             $tipo_mensaje = "danger";
                         }
-                        $stmt->close();
+                    } catch (PDOException $e) {
+                        $mensaje = "Error al eliminar el grado: " . $e->getMessage();
+                        $tipo_mensaje = "danger";
                     }
                 }
                 break;
@@ -108,11 +107,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // Recargar la lista después de cualquier operación
         $grados = [];
-        $result_grados = $conn->query("SELECT * FROM grados ORDER BY nivel_jerarquia ASC, nombre ASC");
-        if ($result_grados) {
-            while ($row = $result_grados->fetch_assoc()) {
-                $grados[] = $row;
-            }
+        $result_grados = $conn->prepare("SELECT tg.*, g.nombre as categoria_nombre FROM tipo_grados tg JOIN grados g ON tg.grado_id = g.id ORDER BY g.nivel_jerarquia ASC, tg.nivel_jerarquia ASC");
+        $result_grados->execute();
+        while ($row = $result_grados->fetch(PDO::FETCH_ASSOC)) {
+            $grados[] = $row;
         }
     }
 }
@@ -196,16 +194,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>">
                                     <input type="hidden" name="accion" value="agregar_grado">
                                     <div class="row">
-                                        <div class="col-md-4 mb-3">
+                                        <div class="col-md-3 mb-3">
+                                            <label for="grado_id" class="form-label">Categoría *</label>
+                                            <select class="form-select" id="grado_id" name="grado_id" required>
+                                                <option value="">Seleccionar categoría...</option>
+                                                <?php foreach ($categorias as $categoria): ?>
+                                                    <option value="<?php echo $categoria['id']; ?>">
+                                                        <?php echo htmlspecialchars($categoria['nombre']); ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3 mb-3">
                                             <label for="nombre_grado" class="form-label">Nombre del Grado *</label>
                                             <input type="text" class="form-control" id="nombre_grado" name="nombre_grado" required placeholder="Ej: Cabo, Sargento, Teniente...">
                                         </div>
-                                        <div class="col-md-4 mb-3">
+                                        <div class="col-md-3 mb-3">
                                             <label for="nivel_grado" class="form-label">Nivel Jerárquico *</label>
                                             <input type="number" class="form-control" id="nivel_grado" name="nivel_grado" required min="1" max="15" placeholder="1-15 (1=más alto, 15=más bajo)">
                                             <div class="form-text">Nivel jerárquico del grado (1 = más alto, 15 = más bajo)</div>
                                         </div>
-                                        <div class="col-md-4 mb-3">
+                                        <div class="col-md-3 mb-3">
                                             <label for="abreviatura_grado" class="form-label">Abreviatura</label>
                                             <input type="text" class="form-control" id="abreviatura_grado" name="abreviatura_grado" placeholder="Ej: Cabo, Sgto, Tte...">
                                         </div>
@@ -228,6 +237,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <thead>
                                             <tr>
                                                 <th>ID</th>
+                                                <th>Categoría</th>
                                                 <th>Nombre</th>
                                                 <th>Nivel Jerárquico</th>
                                                 <th>Abreviatura</th>
@@ -240,6 +250,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <?php foreach ($grados as $grado): ?>
                                                 <tr>
                                                     <td><?php echo $grado['id']; ?></td>
+                                                    <td>
+                                                        <span class="badge bg-secondary"><?php echo htmlspecialchars($grado['categoria_nombre']); ?></span>
+                                                    </td>
                                                     <td>
                                                         <strong><?php echo htmlspecialchars($grado['nombre']); ?></strong>
                                                     </td>
@@ -255,21 +268,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                         <?php echo date('d/m/Y', strtotime($grado['created_at'])); ?>
                                                     </td>
                                                     <td>
-                                                        <button class="btn btn-sm btn-warning me-1" onclick="editarGrado(<?php echo $grado['id']; ?>, '<?php echo addslashes($grado['nombre']); ?>', <?php echo $grado['nivel_jerarquia']; ?>, '<?php echo addslashes($grado['abreviatura']); ?>')" title="Editar">
+                                                        <button class="btn btn-sm btn-warning me-1" onclick="editarGrado(<?php echo $grado['id']; ?>, '<?php echo addslashes($grado['nombre']); ?>', <?php echo $grado['nivel_jerarquia']; ?>, '<?php echo addslashes($grado['abreviatura']); ?>', <?php echo $grado['grado_id']; ?>)" title="Editar">
                                                             <i class="fas fa-edit"></i>
                                                         </button>
                                                         <button class="btn btn-sm btn-danger" onclick="confirmarEliminacion(<?php echo $grado['id']; ?>,'<?php echo htmlspecialchars(addslashes($grado['nombre'])); ?>')" title="Eliminar">
                                                             <i class="fas fa-trash"></i>
                                                         </button>
-                                                        <a href="detalles_grado.php?id=<?php echo $grado['id']; ?>" class="btn btn-sm btn-info ms-1" title="Detalles">
-                                                            <i class="fas fa-eye"></i>
-                                                        </a>
                                                     </td>
                                                 </tr>
                                                 <?php endforeach; ?>
                                             <?php else: ?>
                                                 <tr>
-                                                    <td colspan="6" class="text-center text-muted">
+                                                    <td colspan="7" class="text-center text-muted">
                                                         <i class="fas fa-info-circle me-2"></i>No hay grados policiales registrados.
                                                     </td>
                                                 </tr>
@@ -307,6 +317,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div class="form-text">Nivel jerárquico del grado (1 = más alto, 15 = más bajo)</div>
                         </div>
                         <div class="mb-3">
+                            <label for="edit_grado_id" class="form-label">Categoría *</label>
+                            <select class="form-select" id="edit_grado_id" name="grado_id" required>
+                                <option value="">Seleccionar categoría...</option>
+                                <?php foreach ($categorias as $categoria): ?>
+                                    <option value="<?php echo $categoria['id']; ?>">
+                                        <?php echo htmlspecialchars($categoria['nombre']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="mb-3">
                             <label for="edit_abreviatura" class="form-label">Abreviatura</label>
                             <input type="text" class="form-control" id="edit_abreviatura" name="abreviatura" maxlength="10">
                         </div>
@@ -322,11 +343,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function editarGrado(id, nombre, nivel_jerarquia, abreviatura) {
+        function editarGrado(id, nombre, nivel_jerarquia, abreviatura, grado_id) {
             document.getElementById('edit_id').value = id;
             document.getElementById('edit_nombre').value = nombre;
             document.getElementById('edit_nivel_jerarquia').value = nivel_jerarquia;
             document.getElementById('edit_abreviatura').value = abreviatura || '';
+            document.getElementById('edit_grado_id').value = grado_id;
             new bootstrap.Modal(document.getElementById('editModal')).show();
         }
         
