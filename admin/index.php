@@ -18,10 +18,12 @@ $total_guardias = $conn->query("SELECT COUNT(*) as total FROM lista_guardias")->
 // Obtener ausencias activas (APROBADA y PENDIENTE)
 $ausencias_activas = $conn->query("
     SELECT a.id, a.fecha_inicio, a.fecha_fin, a.estado, a.descripcion,
-           p.nombre, p.apellido, p.cin, g.nombre as grado, ta.nombre as tipo_ausencia
+           p.nombre, p.apellido, p.cin, tg.nombre as grado, ta.nombre as tipo_ausencia
     FROM ausencias a
     JOIN policias p ON a.policia_id = p.id
-    JOIN grados g ON p.grado_id = g.id
+    LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+    LEFT JOIN grados g ON tg.grado_id = g.id
+    LEFT JOIN grados g ON tg.grado_id = g.id
     JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id
     WHERE a.estado IN ('APROBADA', 'PENDIENTE')
     ORDER BY a.fecha_inicio ASC
