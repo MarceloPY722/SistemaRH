@@ -113,6 +113,51 @@ if (isset($_SESSION['usuario_id'])) {
                 <!-- Separador -->
                 <li class="nav-separator"></li>
 
+                <?php if (isset($usuario_actual) && $usuario_actual['rol'] === 'SUPERADMIN'): ?>
+                <!-- Super Admin - Funciones Especiales -->
+                <li class="nav-item has-submenu">
+                    <a href="#" class="nav-link">
+                        <div class="nav-icon">
+                            <i class="fas fa-star"></i>
+                        </div>
+                        <span class="nav-text">Super Admin</span>
+                        <i class="fas fa-chevron-right submenu-arrow"></i>
+                    </a>
+                    <ul class="submenu">
+                        <li>
+                            <a href="/SistemaRH/admin/superadmin/backup.php" class="submenu-link">
+                                <i class="fas fa-database"></i>
+                                <span>Backup Base de Datos</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/SistemaRH/admin/superadmin/usuarios.php" class="submenu-link">
+                                <i class="fas fa-user-cog"></i>
+                                <span>Gestión de Usuarios</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/SistemaRH/admin/superadmin/auditoria.php" class="submenu-link">
+                                <i class="fas fa-clipboard-list"></i>
+                                <span>Auditoría del Sistema</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/SistemaRH/admin/superadmin/reset_guardias.php" class="submenu-link">
+                                <i class="fas fa-sync-alt"></i>
+                                <span>Resetear Guardias</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/SistemaRH/admin/superadmin/reset_servicios.php" class="submenu-link">
+                                <i class="fas fa-trash-alt"></i>
+                                <span>Eliminar Servicios</span>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                <?php endif; ?>
+
                 <!-- Configuración -->
                 <li class="nav-item has-submenu">
                     <a href="#" class="nav-link">

@@ -8,6 +8,12 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
+// Verificar rol del usuario
+$stmt = $conn->prepare("SELECT rol FROM usuarios WHERE id = ?");
+$stmt->execute([$_SESSION['usuario_id']]);
+$usuario_actual = $stmt->fetch();
+$es_superadmin = ($usuario_actual['rol'] === 'SUPERADMIN');
+
 function obtenerSiguienteLegajo($conn) {
     $query = "SELECT MAX(legajo) as max_legajo FROM policias"; // Removido WHERE activo = 1
     $result = $conn->query($query);
@@ -29,10 +35,21 @@ $especialidades = $conn->query("SELECT * FROM especialidades ORDER BY nombre ASC
 $regiones = $conn->query("SELECT * FROM regiones ORDER BY nombre ASC");
 $lugares_guardias = $conn->query("SELECT * FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
 
+// Convertir resultados a arrays para evitar problemas de compatibilidad
+$regiones_data = $regiones ? $regiones->fetchAll(PDO::FETCH_ASSOC) : [];
+$grados_data = $grados ? $grados->fetchAll(PDO::FETCH_ASSOC) : [];
+$especialidades_data = $especialidades ? $especialidades->fetchAll(PDO::FETCH_ASSOC) : [];
+$lugares_guardias_data = $lugares_guardias ? $lugares_guardias->fetchAll(PDO::FETCH_ASSOC) : [];
+
 $mensaje = "";
 
 // Función para generar usuarios aleatorios
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'crear_random') {
+    // Verificar que solo superadmin pueda crear usuarios aleatorios
+    if (!$es_superadmin) {
+        header("Location: index.php");
+        exit();
+    }
     // Verificar si se usa el modo simple o avanzado
     $modo_simple = isset($_POST['modo_simple']) && $_POST['modo_simple'] == '1';
     
@@ -111,10 +128,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
             }
         }
         
+        // Validar región seleccionada para modo avanzado
+        $region_avanzado = isset($_POST['region_avanzado']) ? intval($_POST['region_avanzado']) : null;
+        
         if ($total_usuarios > 100) {
             $mensaje = "<div class='alert alert-danger'>El total de usuarios no puede exceder 100. Total solicitado: $total_usuarios</div>";
         } elseif (empty($lugares_cantidades)) {
             $mensaje = "<div class='alert alert-danger'>Debe seleccionar al menos un lugar de guardia con cantidad mayor a 0</div>";
+        } elseif (!$region_avanzado) {
+            $mensaje = "<div class='alert alert-danger'>Debe seleccionar una región para los usuarios generados</div>";
         } else {
             $nombres = ['Juan', 'María', 'Pedro', 'Ana', 'Carlos', 'Laura', 'Roberto', 'Carmen', 'Fernando', 'Silvia', 'Diego', 'Patricia', 'Andrés', 'Mónica', 'Javier', 'Claudia', 'Ricardo', 'Adriana', 'Mauricio', 'Esperanza'];
             $apellidos = ['García', 'Rodríguez', 'Martínez', 'Fernández', 'López', 'González', 'Sánchez', 'Díaz', 'Herrera', 'Jiménez', 'Ramírez', 'Vargas', 'Castro', 'Restrepo', 'Moreno', 'Ospina', 'Peña', 'Gutiérrez', 'Cardona', 'Álvarez'];
@@ -139,7 +161,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                     $cargo = 'Policía';
                     $comisionamiento = $comisionamientos[array_rand($comisionamientos)];
                     $telefono = '099' . str_pad(rand(100000, 999999), 6, '0', STR_PAD_LEFT);
-                    $region_id = rand(1, 2);
+                    $region_id = $region_avanzado; // Usar la región seleccionada
                     $observaciones = 'Usuario generado automáticamente para lugar específico';
                     
                     // Verificar que el CIN no exista
@@ -168,11 +190,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                      }
                 }
                 
-                // Obtener nombre del lugar para el resumen
+                // Obtener nombre del lugar y región para el resumen
                 $stmt_lugar = $conn->prepare("SELECT nombre FROM lugares_guardias WHERE id = ?");
                 $stmt_lugar->execute([$lugar_guardia_id]);
                 $lugar_nombre = $stmt_lugar->fetchColumn();
-                $detalle_creacion[] = "$creados_lugar usuarios en $lugar_nombre";
+                
+                $stmt_region = $conn->prepare("SELECT nombre FROM regiones WHERE id = ?");
+                $stmt_region->execute([$region_avanzado]);
+                $region_nombre = $stmt_region->fetchColumn();
+                
+                $detalle_creacion[] = "$creados_lugar usuarios en $lugar_nombre (Región: $region_nombre)";
             }
             
             $mensaje = "<div class='alert alert-success'>Se crearon $creados usuarios aleatorios exitosamente:<br>";
@@ -281,9 +308,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                         <h1 class="page-title mb-0">
                             <i class="fas fa-user-plus"></i> Agregar Nuevo Policía
                         </h1>
+                        <?php if ($es_superadmin): ?>
                         <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#randomUserModal">
                             <i class="fas fa-random"></i> Crear Usuarios Aleatorios
                         </button>
+                        <?php endif; ?>
                     </div>
 
                     <?php if (!empty($mensaje)) echo $mensaje; ?>
@@ -376,12 +405,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                                         <select class="form-select" id="region_id" name="region_id" required>
                                             <option value="">Seleccionar región...</option>
                                             <?php 
-                                            if ($regiones->rowCount() > 0) {
-                                                while ($region = $regiones->fetch()): 
+                                            if (!empty($regiones_data)) {
+                                                foreach ($regiones_data as $region): 
                                             ?>
                                             <option value="<?php echo $region['id']; ?>" <?php echo (isset($_POST['region_id']) && $_POST['region_id'] == $region['id']) ? 'selected' : ''; ?>><?php echo htmlspecialchars($region['nombre']); ?></option>
                                             <?php 
-                                                endwhile;
+                                                endforeach;
                                             }
                                             ?>
                                         </select>
@@ -477,6 +506,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                         <!-- Modo Avanzado -->
                         <div id="modo_avanzado_content" style="display: none;">
                             <input type="hidden" name="modo_simple" value="0">
+                            
+                            <!-- Selección de región para modo avanzado -->
+                            <div class="mb-3">
+                                <label for="region_avanzado" class="form-label"><strong>Región para usuarios generados:</strong></label>
+                                <select class="form-select" id="region_avanzado" name="region_avanzado" required>
+                                    <option value="">Seleccionar región...</option>
+                                    <?php 
+                                    if (!empty($regiones_data)) {
+                                        foreach ($regiones_data as $region): 
+                                    ?>
+                                    <option value="<?php echo $region['id']; ?>"><?php echo htmlspecialchars($region['nombre']); ?></option>
+                                    <?php 
+                                        endforeach;
+                                    }
+                                    ?>
+                                </select>
+                                <div class="form-text">Todos los usuarios generados serán asignados a esta región</div>
+                            </div>
+                            
                             <div class="mb-3">
                                 <label class="form-label"><strong>Seleccionar lugares de guardia y cantidades:</strong></label>
                                 <div class="alert alert-warning">
@@ -527,7 +575,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                             
                             <div class="alert alert-info">
                                 <i class="fas fa-info-circle"></i>
-                                <strong>Información:</strong> Se crearán usuarios con datos aleatorios para los lugares de guardia específicos seleccionados.
+                                <strong>Información:</strong> Se crearán usuarios con datos aleatorios para los lugares de guardia específicos seleccionados, todos asignados a la región seleccionada.
                             </div>
                         </div>
                     </div>
@@ -592,7 +640,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Limpiar validaciones del modo simple
             document.getElementById('cantidad').removeAttribute('required');
             // Activar validaciones del modo avanzado
-            const selectsAvanzado = modoAvanzadoContent.querySelectorAll('select[name="lugares_guardias[]"], input[name="cantidades[]"]');
+            const selectsAvanzado = modoAvanzadoContent.querySelectorAll('select[name="lugares_guardias[]"], input[name="cantidades[]"], select[name="region_avanzado"]');
             selectsAvanzado.forEach(input => {
                 input.setAttribute('required', 'required');
             });

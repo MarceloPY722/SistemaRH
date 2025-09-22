@@ -9,6 +9,32 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
+// Verificar si el usuario es superadmin
+$es_superadmin = false;
+try {
+    $stmt = $conn->prepare("SELECT rol FROM usuarios WHERE id = ?");
+    $stmt->execute([$_SESSION['usuario_id']]);
+    $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($usuario && $usuario['rol'] === 'SUPERADMIN') {
+        $es_superadmin = true;
+    }
+} catch (Exception $e) {
+    // En caso de error, redirigir con mensaje
+    $_SESSION['mensaje'] = "Error al verificar permisos: " . $e->getMessage();
+    $_SESSION['tipo_mensaje'] = "danger";
+    header("Location: ../index.php");
+    exit();
+}
+
+// Si no es superadmin, redirigir
+if (!$es_superadmin) {
+    $_SESSION['mensaje'] = "Acceso denegado. Solo usuarios SUPERADMIN pueden realizar esta acción.";
+    $_SESSION['tipo_mensaje'] = "danger";
+    header("Location: ../index.php");
+    exit();
+}
+
 // Procesar reset de órdenes de guardia
 try {
     // Comenzar transacción

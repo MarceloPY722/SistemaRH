@@ -8,10 +8,25 @@ if (!isset($_SESSION['usuario_id'])) {
     exit();
 }
 
-// Obtener lugares de guardia activos
-$lugares_query = "SELECT id, nombre FROM lugares_guardias WHERE activo = 1 ORDER BY nombre";
+// Verificar rol del usuario
+$stmt = $conn->prepare("SELECT rol FROM usuarios WHERE id = ?");
+$stmt->execute([$_SESSION['usuario_id']]);
+$usuario_actual = $stmt->fetch();
+$es_superadmin = ($usuario_actual['rol'] === 'SUPERADMIN');
+
+// Obtener lugares de guardia activos con su zona
+$lugares_query = "SELECT id, nombre, zona FROM lugares_guardias WHERE activo = 1 ORDER BY nombre";
 $lugares_result = $conn->prepare($lugares_query);
 $lugares_result->execute();
+
+// Filtrar por zona si se especifica
+$filtro_zona = $_GET['zona'] ?? '';
+$lugares_filtrados = [];
+while ($lugar = $lugares_result->fetch(PDO::FETCH_ASSOC)) {
+    if (empty($filtro_zona) || $lugar['zona'] === $filtro_zona) {
+        $lugares_filtrados[] = $lugar;
+    }
+}
 
 // Función para obtener policías por lugar de guardia con ordenamiento FIFO
 function obtenerPoliciasPorLugar($conn, $lugar_id, $limite = 5, $incluir_no_disponibles = false) {
@@ -367,6 +382,18 @@ if (isset($_GET['buscar']) && isset($_GET['termino'])) {
             color: white;
         }
         
+        .btn-outline-primary.active {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
+        }
+        
+        .btn-outline-primary.active:hover {
+            background-color: var(--secondary-color);
+            border-color: var(--secondary-color);
+            color: white;
+        }
+        
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
@@ -450,29 +477,73 @@ if (isset($_GET['buscar']) && isset($_GET['termino'])) {
             <!-- Contenido Principal -->
             <div class="main-content">
                 <!-- Header -->
+                <?php
+                // Determinar zona actual según día de la semana
+                $dia_semana = date('N'); // 1=Lunes, 2=Martes, ..., 7=Domingo
+                $zona_actual = in_array($dia_semana, [7, 1, 2, 3, 4]) ? 'CENTRAL' : 'REGIONAL';
+                $nombre_dia = [
+                    1 => 'Lunes',
+                    2 => 'Martes', 
+                    3 => 'Miércoles',
+                    4 => 'Jueves',
+                    5 => 'Viernes',
+                    6 => 'Sábado',
+                    7 => 'Domingo'
+                ][$dia_semana];
+                ?>
+                
                 <div class="page-header">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h1 class="h3 mb-2" style="color: var(--primary-color);"><i class="fas fa-shield-alt me-2"></i>Gestión de Guardias</h1>
                             <p class="text-muted mb-0">Sistema FIFO - Los primeros en la lista son los próximos en guardia</p>
+                            <p class="text-info mb-0 mt-1">
+                                <i class="fas fa-calendar-day me-1"></i>
+                                <strong>Hoy es <?php echo $nombre_dia; ?>:</strong> 
+                                <span class="badge bg-primary">Zona <?php echo $zona_actual; ?></span>
+                            </p>
                         </div>
                         <div class="d-flex gap-2">
                             <button class="btn btn-success generar-btn" onclick="generarGuardia()">
                                 <i class="fas fa-plus-circle me-2"></i>Generar Guardia
                             </button>
-                            <a href="../config/config_guard.php" class="btn btn-warning resetear-btn" style="background: linear-gradient(135deg, #ffc107, #ff9800); border: none; padding: 15px 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(255, 193, 7, 0.3); transition: all 0.3s ease;">
+                            <?php if ($es_superadmin): ?>
+                            <a href="/SistemaRH/admin/superadmin/reset_guardias.php" class="btn btn-warning resetear-btn" style="background: linear-gradient(135deg, #ffc107, #ff9800); border: none; padding: 15px 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(255, 193, 7, 0.3); transition: all 0.3s ease;">
                                 <i class="fas fa-sync-alt me-2"></i>Resetear Guardias
                             </a>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
 
                
 
+                <!-- Filtros por Zona -->
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="fas fa-filter me-2"></i>Filtrar por Zona</h6>
+                                <div class="d-flex gap-2">
+                                    <a href="?zona=" class="btn btn-outline-primary <?php echo empty($filtro_zona) ? 'active' : ''; ?>">
+                                        <i class="fas fa-eye me-1"></i>Todos
+                                    </a>
+                                    <a href="?zona=CENTRAL" class="btn btn-outline-primary <?php echo $filtro_zona === 'CENTRAL' ? 'active' : ''; ?>">
+                                        <i class="fas fa-building me-1"></i>Solo CENTRAL
+                                    </a>
+                                    <a href="?zona=REGIONAL" class="btn btn-outline-primary <?php echo $filtro_zona === 'REGIONAL' ? 'active' : ''; ?>">
+                                        <i class="fas fa-map-marked-alt me-1"></i>Solo REGIONAL
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Lista de Lugares de Guardia -->
                 <div class="guardias-container">
-                    <?php if ($lugares_result->rowCount() > 0): ?>
-                        <?php while ($lugar = $lugares_result->fetch(PDO::FETCH_ASSOC)): ?>
+                    <?php if (count($lugares_filtrados) > 0): ?>
+                        <?php foreach ($lugares_filtrados as $lugar): ?>
                             <div class="guardia-row">
                                 <div class="guardia-card">
                                     <div class="guardia-header" style="cursor: pointer;" onclick="toggleGuardia(<?php echo $lugar['id']; ?>)">
@@ -483,8 +554,8 @@ if (isset($_GET['buscar']) && isset($_GET['termino'])) {
                     </div>
                                     <div class="guardia-body" id="guardia-body-<?php echo $lugar['id']; ?>">
                                 <?php 
-                                $policias_disponibles = obtenerPoliciasPorLugar($conn, $lugar['id'], 20, false); // Solo disponibles
-                                $policias_todos = obtenerPoliciasPorLugar($conn, $lugar['id'], 50, true); // Todos incluidos no disponibles
+                                $policias_disponibles = obtenerPoliciasPorLugar($conn, $lugar['id'], 1000, false); // Todos los disponibles
+                                $policias_todos = obtenerPoliciasPorLugar($conn, $lugar['id'], 1000, true); // Todos incluir no disponibles
                                 $count = 0;
                                 $totalDisponibles = $policias_disponibles->rowCount();
                                 $totalTodos = $policias_todos->rowCount();
@@ -509,7 +580,17 @@ if (isset($_GET['buscar']) && isset($_GET['termino'])) {
                                                         <span class="me-3"><i class="fas fa-id-badge me-1"></i>Legajo: <?php echo $policia['legajo']; ?></span>
                                                         <span class="me-3"><i class="fas fa-star me-1"></i><?php echo htmlspecialchars($policia['grado'] ?? ''); ?></span>
                                                         <span class="me-3"><i class="fas fa-id-card me-1"></i><?php echo htmlspecialchars($policia['cin'] ?? ''); ?></span>
-                                                        <span><i class="fas fa-map-marker-alt me-1"></i><?php echo htmlspecialchars($policia['zona'] ?? 'N/A'); ?></span>
+                                                        <?php 
+                                                        $zona_badge_class = 'bg-secondary';
+                                                        if ($policia['zona'] === 'CENTRAL') {
+                                                            $zona_badge_class = 'bg-primary';
+                                                        } elseif ($policia['zona'] === 'REGIONAL') {
+                                                            $zona_badge_class = 'bg-success';
+                                                        }
+                                                        ?>
+                                                        <span class="badge <?php echo $zona_badge_class; ?> text-white">
+                                                            <i class="fas fa-map-marker-alt me-1"></i><?php echo htmlspecialchars($policia['zona'] ?? 'N/A'); ?>
+                                                        </span>
                                                     </div>
                                                     <?php if (!empty($policia['ultima_guardia_fecha'])): ?>
                                                         <div class="small text-info mt-1">
@@ -560,7 +641,17 @@ if (isset($_GET['buscar']) && isset($_GET['termino'])) {
                                                             <span class="me-3"><i class="fas fa-id-badge me-1"></i>Legajo: <?php echo $policia['legajo']; ?></span>
                                                             <span class="me-3"><i class="fas fa-star me-1"></i><?php echo htmlspecialchars($policia['grado'] ?? ''); ?></span>
                                                             <span class="me-3"><i class="fas fa-id-card me-1"></i><?php echo htmlspecialchars($policia['cin'] ?? ''); ?></span>
-                                                            <span><i class="fas fa-map-marker-alt me-1"></i><?php echo htmlspecialchars($policia['zona'] ?? 'N/A'); ?></span>
+                                                        <?php 
+                                                        $zona_badge_class = 'bg-secondary';
+                                                        if ($policia['zona'] === 'CENTRAL') {
+                                                            $zona_badge_class = 'bg-primary';
+                                                        } elseif ($policia['zona'] === 'REGIONAL') {
+                                                            $zona_badge_class = 'bg-success';
+                                                        }
+                                                        ?>
+                                                        <span class="badge <?php echo $zona_badge_class; ?> text-white">
+                                                            <i class="fas fa-map-marker-alt me-1"></i><?php echo htmlspecialchars($policia['zona'] ?? 'N/A'); ?>
+                                                        </span>
                                                         </div>
                                                         <?php if (!empty($policia['comisionamiento'])): ?>
                                                             <div class="small text-warning mt-1">
@@ -624,7 +715,7 @@ if (isset($_GET['buscar']) && isset($_GET['termino'])) {
                                     </div>
                                 </div>
                             </div>
-                        <?php endwhile; ?>
+                        <?php endforeach; ?>
                     <?php else: ?>
                         <div class="guardia-row">
                             <div class="alert alert-warning text-center">

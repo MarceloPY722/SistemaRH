@@ -11,15 +11,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $activo = isset($_POST['activo']) ? 1 : 0;
                 
                 if (!empty($nombre)) {
-                    $stmt = $conn->prepare("INSERT INTO regiones (nombre, descripcion, activo) VALUES (?, ?, ?)");
-                    $stmt->bind_param("ssi", $nombre, $descripcion, $activo);
-                    
-                    if ($stmt->execute()) {
-                        $success_message = "Región creada exitosamente.";
-                    } else {
-                        $error_message = "Error al crear la región: " . $conn->error;
+                    try {
+                        $stmt = $conn->prepare("INSERT INTO regiones (nombre, descripcion, activo) VALUES (?, ?, ?)");
+                        if ($stmt->execute([$nombre, $descripcion, $activo])) {
+                            $success_message = "Región creada exitosamente.";
+                        } else {
+                            $error_message = "Error al crear la región.";
+                        }
+                    } catch (PDOException $e) {
+                        $error_message = "Error al crear la región: " . $e->getMessage();
                     }
-                    $stmt->close();
                 } else {
                     $error_message = "El nombre de la región es obligatorio.";
                 }
@@ -32,15 +33,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $activo = isset($_POST['activo']) ? 1 : 0;
                 
                 if (!empty($nombre) && $id > 0) {
-                    $stmt = $conn->prepare("UPDATE regiones SET nombre = ?, descripcion = ?, activo = ? WHERE id = ?");
-                    $stmt->bind_param("ssii", $nombre, $descripcion, $activo, $id);
-                    
-                    if ($stmt->execute()) {
-                        $success_message = "Región actualizada exitosamente.";
-                    } else {
-                        $error_message = "Error al actualizar la región: " . $conn->error;
+                    try {
+                        $stmt = $conn->prepare("UPDATE regiones SET nombre = ?, descripcion = ?, activo = ? WHERE id = ?");
+                        if ($stmt->execute([$nombre, $descripcion, $activo, $id])) {
+                            $success_message = "Región actualizada exitosamente.";
+                        } else {
+                            $error_message = "Error al actualizar la región.";
+                        }
+                    } catch (PDOException $e) {
+                        $error_message = "Error al actualizar la región: " . $e->getMessage();
                     }
-                    $stmt->close();
                 } else {
                     $error_message = "Datos inválidos para actualizar.";
                 }
@@ -51,26 +53,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 if ($id > 0) {
                     // Verificar si la región está siendo usada
-                    $check_stmt = $conn->prepare("SELECT COUNT(*) as count FROM policias WHERE region_id = ?");
-                    $check_stmt->bind_param("i", $id);
-                    $check_stmt->execute();
-                    $result = $check_stmt->get_result();
-                    $row = $result->fetch_assoc();
-                    
-                    if ($row['count'] > 0) {
-                        $error_message = "No se puede eliminar la región porque está siendo utilizada por " . $row['count'] . " policía(s).";
-                    } else {
-                        $stmt = $conn->prepare("DELETE FROM regiones WHERE id = ?");
-                        $stmt->bind_param("i", $id);
+                    try {
+                        $check_stmt = $conn->prepare("SELECT COUNT(*) as count FROM policias WHERE region_id = ?");
+                        $check_stmt->execute([$id]);
+                        $row = $check_stmt->fetch();
                         
-                        if ($stmt->execute()) {
-                            $success_message = "Región eliminada exitosamente.";
+                        if ($row['count'] > 0) {
+                            $error_message = "No se puede eliminar la región porque está siendo utilizada por " . $row['count'] . " policía(s).";
                         } else {
-                            $error_message = "Error al eliminar la región: " . $conn->error;
+                            $stmt = $conn->prepare("DELETE FROM regiones WHERE id = ?");
+                            if ($stmt->execute([$id])) {
+                                $success_message = "Región eliminada exitosamente.";
+                            } else {
+                                $error_message = "Error al eliminar la región.";
+                            }
                         }
-                        $stmt->close();
+                    } catch (PDOException $e) {
+                        $error_message = "Error al eliminar la región: " . $e->getMessage();
                     }
-                    $check_stmt->close();
                 } else {
                     $error_message = "ID de región inválido.";
                 }
@@ -84,17 +84,15 @@ $regiones_query = "SELECT r.*,
                    (SELECT COUNT(*) FROM policias p WHERE p.region_id = r.id) as policias_count 
                    FROM regiones r ORDER BY r.nombre";
 $regiones_result = $conn->query($regiones_query);
+$regiones = $regiones_result ? $regiones_result->fetchAll() : [];
 
 // Obtener región para editar si se especifica
 $edit_region = null;
 if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
     $edit_id = intval($_GET['edit']);
     $edit_stmt = $conn->prepare("SELECT * FROM regiones WHERE id = ?");
-    $edit_stmt->bind_param("i", $edit_id);
-    $edit_stmt->execute();
-    $edit_result = $edit_stmt->get_result();
-    $edit_region = $edit_result->fetch_assoc();
-    $edit_stmt->close();
+    $edit_stmt->execute([$edit_id]);
+    $edit_region = $edit_stmt->fetch();
 }
 ?>
 
@@ -203,7 +201,7 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
                                     <h5 class="mb-0"><i class="fas fa-list"></i> Lista de Regiones</h5>
                                 </div>
                                 <div class="card-body">
-                                    <?php if ($regiones_result && $regiones_result->num_rows > 0): ?>
+                                    <?php if (!empty($regiones)): ?>
                                         <div class="table-responsive">
                                             <table class="table table-striped table-hover">
                                                 <thead class="table-dark">
@@ -217,7 +215,7 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    <?php while ($region = $regiones_result->fetch_assoc()): ?>
+                                                    <?php foreach ($regiones as $region): ?>
                                                         <tr>
                                                             <td><?php echo $region['id']; ?></td>
                                                             <td>
@@ -255,7 +253,7 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
                                                                 </div>
                                                             </td>
                                                         </tr>
-                                                    <?php endwhile; ?>
+                                                    <?php endforeach; ?>
                                                 </tbody>
                                             </table>
                                         </div>

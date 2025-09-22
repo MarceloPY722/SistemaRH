@@ -12,4 +12,9 @@ try {
 } catch(PDOException $e) {
     die("Error de conexión: " . $e->getMessage());
 }
+
+// Incluir funciones de auditoría automáticamente
+if (file_exists(__DIR__ . '/../admin/inc/auditoria_functions.php')) {
+    require_once __DIR__ . '/../admin/inc/auditoria_functions.php';
+}
 ?>

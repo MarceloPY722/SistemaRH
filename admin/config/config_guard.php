@@ -8,6 +8,12 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
+// Verificar rol del usuario
+$stmt = $conn->prepare("SELECT rol FROM usuarios WHERE id = ?");
+$stmt->execute([$_SESSION['usuario_id']]);
+$usuario_actual = $stmt->fetch();
+$es_superadmin = ($usuario_actual['rol'] === 'SUPERADMIN');
+
 $mensaje = '';
 
 // Procesar eliminación de guardias
@@ -137,6 +143,7 @@ $fecha_actual = date('Y-m-d');
                             <hr>                            
                             <?php echo $mensaje; ?>
                             <div class="row mb-4">
+                                <?php if ($es_superadmin): ?>
                                 <div class="col-md-3">
                                     <div class="card border-primary">
                                         <div class="card-header bg-primary text-white">
@@ -153,6 +160,7 @@ $fecha_actual = date('Y-m-d');
                                         </div>
                                     </div>
                                 </div>
+                                <?php endif; ?>
                                 
                                 <div class="col-md-3">
                                     <div class="card border-danger">

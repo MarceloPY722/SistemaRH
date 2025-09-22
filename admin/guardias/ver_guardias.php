@@ -1,6 +1,20 @@
 <?php
+session_start();
+
+// Verificar si el usuario está logueado
+if (!isset($_SESSION['usuario_id'])) {
+    header('Location: ../../index.php');
+    exit();
+}
+
 require_once '../../cnx/db_connect.php';
 require_once __DIR__ . '/../../lib/fpdf/fpdf.php';
+
+// Verificar rol del usuario
+$stmt_user = $conn->prepare("SELECT rol FROM usuarios WHERE id = ?");
+$stmt_user->execute([$_SESSION['usuario_id']]);
+$usuario_actual = $stmt_user->fetch();
+$es_superadmin = ($usuario_actual['rol'] === 'SUPERADMIN');
 
 // Función para convertir UTF-8 a ISO-8859-1
 function convertToLatin1($text) {
@@ -16,6 +30,8 @@ if ($fecha_guardia && $fecha_guardia != date('Y-m-d') && !isset($_GET['pdf']) &&
     $generar_pdf = true;
 }
 $es_domingo = (date('w', strtotime($fecha_guardia)) == 0);
+
+// IMPORTANTE: Obtener datos ANTES de cualquier salida HTML para PDF
 
 // Verificar si existe una guardia para esta fecha
 $stmt = $conn->prepare("
@@ -53,6 +69,29 @@ if (!$guardia) {
         WHERE gg.fecha_guardia = ?
         ORDER BY ggd.posicion_asignacion
     ");
+    $stmt = $conn->prepare("
+        SELECT 
+            ggd.posicion_asignacion,
+            p.legajo,
+            p.nombre,
+            p.apellido,
+            p.cin,
+            p.telefono,
+            g.nombre as grado,
+            g.nivel_jerarquia,
+            e.nombre as especialidad,
+            p.comisionamiento,
+            lg.nombre as lugar_guardia,
+            lg.zona as region
+        FROM guardias_generadas_detalle ggd
+        JOIN guardias_generadas gg ON ggd.guardia_generada_id = gg.id
+        JOIN policias p ON ggd.policia_id = p.id
+        LEFT JOIN grados g ON p.grado_id = g.id
+        LEFT JOIN especialidades e ON p.especialidad_id = e.id
+        LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
+        WHERE gg.fecha_guardia = ?
+        ORDER BY g.nivel_jerarquia DESC, p.legajo DESC
+    ");
     $stmt->execute([$fecha_guardia]);
     $personal_asignado = $stmt->fetchAll();
 }
@@ -81,13 +120,13 @@ $puestos_requeridos = array_filter($puestos_requeridos);
 // Organizar personal por posición
 $personal_por_posicion = [];
 foreach ($personal_asignado as $persona) {
-    $personal_por_posicion[$persona['posicion_asignacion']] = $persona;
+    $personal_por_posicion[$persona['posicion_asignacion']][] = $persona;
 }
 
-// Generar PDF automáticamente si se solicita específicamente
+// ========== GENERACIÓN DE PDF - DEBE EJECUTARSE ANTES DE CUALQUIER SALIDA HTML ==========
 if ($generar_pdf && $fecha_guardia && $guardia) {
     // Limpiar cualquier salida previa
-    if (ob_get_level()) {
+    while (ob_get_level()) {
         ob_end_clean();
     }
     
@@ -99,31 +138,56 @@ if ($generar_pdf && $fecha_guardia && $guardia) {
     $pdf->Cell(0, 10, convertToLatin1('ORDEN DEL DÍA'), 0, 1, 'C');
     $pdf->SetFont('Arial', 'B', 12);
     $pdf->Cell(0, 8, convertToLatin1('Fecha: ' . date('d/m/Y', strtotime($fecha_guardia))), 0, 1, 'C');
-    $pdf->Cell(0, 8, convertToLatin1('Región: REGIONAL'), 0, 1, 'C');
+    $pdf->Cell(0, 8, convertToLatin1('Región: ' . $guardia['region']), 0, 1, 'C');
     $pdf->Cell(0, 8, convertToLatin1('Generada: ' . date('d/m/Y H:i')), 0, 1, 'C');
     $pdf->Ln(10);
-    
-    // Generar contenido para cada puesto
-    foreach ($puestos_requeridos as $posicion => $puesto) {
+
+    // Generar contenido para cada puesto individual (igual que la vista previa)
+    foreach ($puestos_requeridos as $posicion => $puesto_nombre) {
+        // Título del puesto
         $pdf->SetFont('Arial', 'B', 10);
-        $pdf->SetFillColor(220, 53, 69);
+        $pdf->SetFillColor(0, 123, 255); // Color azul como en la vista previa
         $pdf->SetTextColor(255, 255, 255);
-        $pdf->Cell(0, 8, convertToLatin1($puesto), 1, 1, 'C', true);
+        $pdf->Cell(0, 8, convertToLatin1($puesto_nombre), 1, 1, 'L', true);
         $pdf->SetTextColor(0, 0, 0);
         
-        if (isset($personal_por_posicion[$posicion])) {
-            $persona = $personal_por_posicion[$posicion];
-            $pdf->SetFont('Arial', '', 9);
-            $pdf->Cell(0, 25, '', 1, 1); // Espacio para la persona
-            $pdf->SetY($pdf->GetY() - 25);
-            $pdf->Cell(0, 8, convertToLatin1($persona['grado'] . ' ' . $persona['apellido'] . ', ' . $persona['nombre']), 0, 1, 'C');
-            $pdf->Cell(0, 8, convertToLatin1('Legajo: ' . $persona['legajo'] . ' - CIN: ' . $persona['cin']), 0, 1, 'C');
-            $pdf->Cell(0, 9, convertToLatin1('Región: ' . $persona['region']), 0, 1, 'C');
+        if (isset($personal_por_posicion[$posicion]) && !empty($personal_por_posicion[$posicion])) {
+            $persona = $personal_por_posicion[$posicion][0]; // Tomar el primer elemento del array
+            
+            // Información del oficial
+            $pdf->SetFont('Arial', 'B', 9);
+            $nombre_completo = $persona['nombre'] . ' ' . $persona['apellido'];
+            $pdf->Cell(0, 6, convertToLatin1('  ' . $nombre_completo), 0, 1, 'L');
+            
+            // Grado y región
+            $pdf->SetFont('Arial', '', 8);
+            $grado_region = 'Grado: ' . $persona['grado'] . ' | Region: ' . $persona['region'];
+            $pdf->Cell(0, 5, convertToLatin1('  ' . $grado_region), 0, 1, 'L');
+            
+            // Detalles
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->Cell(0, 4, convertToLatin1('  Legajo: ' . $persona['legajo']), 0, 1, 'L');
+            $pdf->Cell(0, 4, convertToLatin1('  CIN: ' . $persona['cin']), 0, 1, 'L');
+            $pdf->Cell(0, 4, convertToLatin1('  Telefono: ' . ($persona['telefono'] ?: 'No registrado')), 0, 1, 'L');
+            
+            if ($persona['especialidad']) {
+                $pdf->Cell(0, 4, convertToLatin1('  Especialidad: ' . $persona['especialidad']), 0, 1, 'L');
+            }
+            
+            if ($persona['comisionamiento']) {
+                $pdf->Cell(0, 4, convertToLatin1('  Comisionamiento: ' . $persona['comisionamiento']), 0, 1, 'L');
+            }
+            
+            $pdf->Cell(0, 4, convertToLatin1('  Sector: ' . $puesto_nombre), 0, 1, 'L');
+            
         } else {
+            // Sin asignar
             $pdf->SetFont('Arial', 'I', 9);
-            $pdf->Cell(0, 25, convertToLatin1('Sin asignar'), 1, 1, 'C');
+            $pdf->SetFillColor(248, 249, 250); // Color gris claro
+            $pdf->Cell(0, 20, convertToLatin1('Sin asignar'), 1, 1, 'C', true);
         }
-        $pdf->Ln(2);
+        
+        $pdf->Ln(3); // Espacio entre puestos
     }
     
     // Descargar PDF
@@ -283,7 +347,7 @@ if ($generar_pdf && $fecha_guardia && $guardia) {
                             </div>
                             
                             <?php if (isset($personal_por_posicion[$posicion])): ?>
-                                <?php $persona = $personal_por_posicion[$posicion]; ?>
+                                <?php $persona = $personal_por_posicion[$posicion][0]; // Tomar el primer elemento del array ?>
                                 <div class="policia-info">
                                     <h6 class="mb-2">
                                         <i class="fas fa-user me-2 text-primary"></i>
@@ -304,12 +368,14 @@ if ($generar_pdf && $fecha_guardia && $guardia) {
                                     <div class="small text-muted">
                                         <div><strong>Legajo:</strong> <?php echo $persona['legajo']; ?></div>
                                         <div><strong>CIN:</strong> <?php echo $persona['cin']; ?></div>
+                                        <div><strong>Teléfono:</strong> <?php echo $persona['telefono'] ?: 'No registrado'; ?></div>
                                         <?php if ($persona['especialidad']): ?>
                                             <div><strong>Especialidad:</strong> <?php echo $persona['especialidad']; ?></div>
                                         <?php endif; ?>
                                         <?php if ($persona['comisionamiento']): ?>
                                             <div><strong>Comisionamiento:</strong> <?php echo $persona['comisionamiento']; ?></div>
                                         <?php endif; ?>
+                                        <div><strong>Sector:</strong> <?php echo $puesto_nombre; ?></div>
                                     </div>
                                 </div>
                             <?php else: ?>
@@ -368,9 +434,11 @@ if ($generar_pdf && $fecha_guardia && $guardia) {
                 <a href="ver_guardias.php?fecha=<?php echo $fecha_guardia; ?>&pdf=1" class="btn btn-info me-2">
                     <i class="fas fa-file-pdf me-2"></i>Descargar PDF
                 </a>
+                <?php if ($es_superadmin): ?>
                 <button class="btn btn-warning" onclick="regenerarGuardia()">
                     <i class="fas fa-sync-alt me-2"></i>Regenerar Guardia
                 </button>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
     </div>

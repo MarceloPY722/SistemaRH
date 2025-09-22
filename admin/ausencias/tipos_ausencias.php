@@ -31,7 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         $mensaje = "Error al crear el tipo de ausencia.";
                         $tipo_mensaje = "danger";
                     }
-                    $stmt->close();
                 } else {
                     $mensaje = "El nombre del tipo de ausencia es obligatorio.";
                     $tipo_mensaje = "warning";
@@ -54,7 +53,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         $mensaje = "Error al actualizar el tipo de ausencia.";
                         $tipo_mensaje = "danger";
                     }
-                    $stmt->close();
                 } else {
                     $mensaje = "Datos incompletos para actualizar.";
                     $tipo_mensaje = "warning";
@@ -83,7 +81,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             $mensaje = "Error al eliminar el tipo de ausencia.";
                             $tipo_mensaje = "danger";
                         }
-                        $stmt->close();
                     }
                 } else {
                     $mensaje = "ID de tipo de ausencia no válido.";

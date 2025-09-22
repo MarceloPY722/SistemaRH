@@ -6,6 +6,12 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 require_once '../../../cnx/db_connect.php';
 
+// Verificar rol del usuario
+$stmt = $conn->prepare("SELECT rol FROM usuarios WHERE id = ?");
+$stmt->execute([$_SESSION['usuario_id']]);
+$usuario_actual = $stmt->fetch();
+$es_superadmin = ($usuario_actual['rol'] === 'SUPERADMIN');
+
 $mensaje = '';
 $tipo_mensaje = '';
 $lugar = null;
@@ -42,32 +48,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $descripcion = trim($_POST['descripcion_lugar'] ?? '');
     $activo = isset($_POST['activo_lugar']) ? 1 : 0;
     
+    // Si es superadmin, verificar si se quiere cambiar el ID
+    $nuevo_id = null;
+    if ($es_superadmin && isset($_POST['nuevo_id']) && !empty($_POST['nuevo_id'])) {
+        $nuevo_id = intval($_POST['nuevo_id']);
+        if ($nuevo_id <= 0) {
+            $mensaje = "El ID debe ser un número positivo.";
+            $tipo_mensaje = "warning";
+            $nuevo_id = null;
+        }
+    }
+    
     if (!empty($nombre) && !empty($zona)) {
-        // Verificar si ya existe otro lugar con el mismo nombre
-        $stmt_check = $conn->prepare("SELECT id FROM lugares_guardias WHERE nombre = ? AND id != ?");
+        // Verificar si ya existe otro lugar con el mismo nombre en la misma zona
+        $stmt_check = $conn->prepare("SELECT id FROM lugares_guardias WHERE nombre = ? AND zona = ? AND id != ?");
         if ($stmt_check) {
-            $stmt_check->execute([$nombre, $lugar_id]);
+            $stmt_check->execute([$nombre, $zona, $lugar_id]);
             
             if ($stmt_check->rowCount() > 0) {
-                $mensaje = "Ya existe otro lugar de guardia con ese nombre.";
+                $mensaje = "Ya existe otro lugar de guardia con ese nombre en la zona $zona.";
                 $tipo_mensaje = "warning";
             } else {
-                // Actualizar lugar
-                $stmt_update = $conn->prepare("UPDATE lugares_guardias SET nombre = ?, zona = ?, direccion = ?, descripcion = ?, activo = ?, updated_at = NOW() WHERE id = ?");
-                if ($stmt_update) {
-                    $stmt_update->bindParam(1, $nombre, PDO::PARAM_STR);
-                    $stmt_update->bindParam(2, $zona, PDO::PARAM_STR);
-                    $stmt_update->bindParam(3, $direccion, PDO::PARAM_STR);
-                    $stmt_update->bindParam(4, $descripcion, PDO::PARAM_STR);
-                    $stmt_update->bindParam(5, $activo, PDO::PARAM_INT);
-                    $stmt_update->bindParam(6, $lugar_id, PDO::PARAM_INT);
+                try {
+                    $conn->beginTransaction();
                     
-                    if ($stmt_update->execute()) {
-                        if ($stmt_update->rowCount() > 0) {
-                            $mensaje = "Lugar de guardia actualizado exitosamente.";
+                    // Si se quiere cambiar el ID y es superadmin
+                    if ($nuevo_id !== null && $nuevo_id != $lugar_id) {
+                        // Verificar si el nuevo ID ya existe
+                        $stmt_check_id = $conn->prepare("SELECT id FROM lugares_guardias WHERE id = ?");
+                        $stmt_check_id->execute([$nuevo_id]);
+                        
+                        if ($stmt_check_id->rowCount() > 0) {
+                            // Intercambiar IDs: primero mover el registro existente a un ID temporal
+                            $id_temporal = 999999; // ID temporal alto que no debería existir
+                            
+                            // Mover el registro existente al ID temporal
+                            $stmt_temp = $conn->prepare("UPDATE lugares_guardias SET id = ? WHERE id = ?");
+                            $stmt_temp->execute([$id_temporal, $nuevo_id]);
+                            
+                            // Mover el registro actual al nuevo ID
+                            $stmt_move_current = $conn->prepare("UPDATE lugares_guardias SET id = ? WHERE id = ?");
+                            $stmt_move_current->execute([$nuevo_id, $lugar_id]);
+                            
+                            // Mover el registro temporal al ID original
+                            $stmt_restore = $conn->prepare("UPDATE lugares_guardias SET id = ? WHERE id = ?");
+                            $stmt_restore->execute([$lugar_id, $id_temporal]);
+                            
+                            // Actualizar el lugar_id para las consultas posteriores
+                            $lugar_id = $nuevo_id;
+                            $mensaje_extra = " ID intercambiado exitosamente.";
+                        } else {
+                            // Simplemente actualizar el ID
+                            $stmt_update_id = $conn->prepare("UPDATE lugares_guardias SET id = ? WHERE id = ?");
+                            $stmt_update_id->execute([$nuevo_id, $lugar_id]);
+                            $lugar_id = $nuevo_id;
+                            $mensaje_extra = " ID cambiado exitosamente.";
+                        }
+                    }
+                    
+                    // Actualizar los datos del lugar
+                    $stmt_update = $conn->prepare("UPDATE lugares_guardias SET nombre = ?, zona = ?, direccion = ?, descripcion = ?, activo = ?, updated_at = NOW() WHERE id = ?");
+                    if ($stmt_update->execute([$nombre, $zona, $direccion, $descripcion, $activo, $lugar_id])) {
+                        // Verificar si hubo cambios (considerando también cambios de ID)
+                        $hubo_cambios = $stmt_update->rowCount() > 0 || ($nuevo_id !== null && $nuevo_id != $lugar['id']);
+                        
+                        if ($hubo_cambios) {
+                            $mensaje = "Lugar de guardia actualizado exitosamente." . ($mensaje_extra ?? '');
                             $tipo_mensaje = "success";
                             
                             // Actualizar datos del lugar para mostrar en el formulario
+                            $lugar['id'] = $lugar_id;
                             $lugar['nombre'] = $nombre;
                             $lugar['zona'] = $zona;
                             $lugar['direccion'] = $direccion;
@@ -78,16 +128,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $tipo_mensaje = "info";
                         }
                     } else {
-                        $mensaje = "Error al actualizar el lugar de guardia.";
-                        $tipo_mensaje = "danger";
+                        throw new Exception("Error al actualizar el lugar de guardia");
                     }
-                    $stmt_update->close();
-                } else {
-                    $mensaje = "Error en la preparación de la consulta.";
+                    
+                    $conn->commit();
+                    
+                } catch (Exception $e) {
+                    $conn->rollBack();
+                    $mensaje = "Error al actualizar el lugar de guardia: " . $e->getMessage();
                     $tipo_mensaje = "danger";
                 }
             }
-            $stmt_check->close();
+
         } else {
             $mensaje = "Error al verificar duplicados.";
             $tipo_mensaje = "danger";
@@ -187,6 +239,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </div>
                             <div class="card-body">
                                 <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF'] . '?id=' . $lugar_id); ?>">
+                                    <?php if ($es_superadmin): ?>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label for="nuevo_id" class="form-label">Cambiar ID (SuperAdmin)</label>
+                                            <input type="number" class="form-control" id="nuevo_id" name="nuevo_id" 
+                                                   value="<?php echo $lugar['id']; ?>" min="1" 
+                                                   placeholder="Nuevo ID...">
+                                            <div class="form-text">Solo SuperAdmin: Si el ID ya existe, se intercambiarán los registros.</div>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">ID Actual</label>
+                                            <input type="text" class="form-control" value="<?php echo $lugar['id']; ?>" disabled>
+                                            <div class="form-text">ID actual del registro (solo lectura)</div>
+                                        </div>
+                                    </div>
+                                    <hr>
+                                    <?php endif; ?>
+                                    
                                     <div class="row">
                                         <div class="col-md-6 mb-3">
                                             <label for="nombre_lugar" class="form-label">Nombre del Lugar *</label>

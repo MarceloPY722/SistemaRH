@@ -16,40 +16,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     switch ($accion) {
         case 'agregar_lugar':
             $nombre = trim($_POST['nombre_lugar'] ?? '');
+            $zona = trim($_POST['zona_lugar'] ?? 'CENTRAL');
             $direccion = trim($_POST['direccion_lugar'] ?? '');
             $descripcion = trim($_POST['descripcion_lugar'] ?? '');
             $activo = isset($_POST['activo_lugar']) ? 1 : 0;
             
             if (!empty($nombre)) {
-                // Verificar si ya existe un lugar con el mismo nombre
-                $stmt_check = $conn->prepare("SELECT id FROM lugares_guardias WHERE nombre = ?");
+                // Verificar si ya existe un lugar con el mismo nombre en la misma zona
+                $stmt_check = $conn->prepare("SELECT id FROM lugares_guardias WHERE nombre = ? AND zona = ?");
                 if ($stmt_check) {
-                    $stmt_check->bindParam(1, $nombre, PDO::PARAM_STR);
-                    $stmt_check->execute();
-                    
-                    if ($stmt_check->rowCount() > 0) {
-                        $mensaje = "Ya existe un lugar de guardia con ese nombre.";
-                        $tipo_mensaje = "warning";
-                    } else {
-                        // Insertar nuevo lugar
-                        $stmt = $conn->prepare("INSERT INTO lugares_guardias (nombre, direccion, descripcion, activo) VALUES (?, ?, ?, ?)");
-                        if ($stmt) {
-                            $stmt->bindParam(1, $nombre, PDO::PARAM_STR);
-                            $stmt->bindParam(2, $direccion, PDO::PARAM_STR);
-                            $stmt->bindParam(3, $descripcion, PDO::PARAM_STR);
-                            $stmt->bindParam(4, $activo, PDO::PARAM_INT);
-                            
-                            if ($stmt->execute()) {
-                                $mensaje = "Lugar de guardia agregado exitosamente.";
-                                $tipo_mensaje = "success";
+                    try {
+                        if ($stmt_check->execute([$nombre, $zona])) {
+                            if ($stmt_check->rowCount() > 0) {
+                                $mensaje = "Ya existe un lugar de guardia con ese nombre en la zona $zona.";
+                                $tipo_mensaje = "warning";
                             } else {
-                                $mensaje = "Error al agregar el lugar de guardia.";
-                                $tipo_mensaje = "danger";
+                                // Insertar nuevo lugar
+                                $stmt = $conn->prepare("INSERT INTO lugares_guardias (nombre, zona, direccion, descripcion, activo) VALUES (?, ?, ?, ?, ?)");
+                                if ($stmt) {
+                                    try {
+                                        if ($stmt->execute([$nombre, $zona, $direccion, $descripcion, $activo])) {
+                                            $mensaje = "Lugar de guardia agregado exitosamente.";
+                                            $tipo_mensaje = "success";
+                                        } else {
+                                            $mensaje = "Error al agregar el lugar de guardia.";
+                                            $tipo_mensaje = "danger";
+                                        }
+                                    } catch (PDOException $e) {
+                                        $mensaje = "Error al agregar el lugar de guardia: " . $e->getMessage();
+                                        $tipo_mensaje = "danger";
+                                    }
+                                } else {
+                                    $mensaje = "Error en la preparación de la consulta.";
+                                    $tipo_mensaje = "danger";
+                                }
                             }
                         } else {
-                            $mensaje = "Error en la preparación de la consulta.";
+                            $mensaje = "Error al verificar duplicados.";
                             $tipo_mensaje = "danger";
                         }
+                    } catch (PDOException $e) {
+                        $mensaje = "Error al verificar duplicados: " . $e->getMessage();
+                        $tipo_mensaje = "danger";
                     }
                 } else {
                     $mensaje = "Error al verificar duplicados.";
@@ -67,18 +75,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($lugar_id > 0) {
                 $stmt = $conn->prepare("DELETE FROM lugares_guardias WHERE id = ?");
                 if ($stmt) {
-                    $stmt->bindParam(1, $lugar_id, PDO::PARAM_INT);
-                    
-                    if ($stmt->execute()) {
-                        if ($stmt->rowCount() > 0) {
-                            $mensaje = "Lugar de guardia eliminado exitosamente.";
-                            $tipo_mensaje = "success";
+                    try {
+                        if ($stmt->execute([$lugar_id])) {
+                            if ($stmt->rowCount() > 0) {
+                                $mensaje = "Lugar de guardia eliminado exitosamente.";
+                                $tipo_mensaje = "success";
+                            } else {
+                                $mensaje = "No se encontró el lugar de guardia a eliminar.";
+                                $tipo_mensaje = "warning";
+                            }
                         } else {
-                            $mensaje = "No se encontró el lugar de guardia a eliminar.";
-                            $tipo_mensaje = "warning";
+                            $mensaje = "Error al eliminar el lugar de guardia.";
+                            $tipo_mensaje = "danger";
                         }
-                    } else {
-                        $mensaje = "Error al eliminar el lugar de guardia.";
+                    } catch (PDOException $e) {
+                        $mensaje = "Error al eliminar el lugar de guardia: " . $e->getMessage();
                         $tipo_mensaje = "danger";
                     }
                 } else {
@@ -93,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 $lugares_guardia = [];
-$result_lugares = $conn->query("SELECT * FROM lugares_guardias ORDER BY nombre ASC");
+$result_lugares = $conn->query("SELECT * FROM lugares_guardias ORDER BY id ASC");
 if ($result_lugares) {
     while ($row = $result_lugares->fetch()) {
         $lugares_guardia[] = $row;
@@ -171,9 +182,16 @@ if ($result_lugares) {
                                 <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>">
                                     <input type="hidden" name="accion" value="agregar_lugar">
                                     <div class="row">
-                                        <div class="col-md-12 mb-3">
+                                        <div class="col-md-8 mb-3">
                                             <label for="nombre_lugar" class="form-label">Nombre del Lugar *</label>
                                             <input type="text" class="form-control" id="nombre_lugar" name="nombre_lugar" required>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label for="zona_lugar" class="form-label">Zona *</label>
+                                            <select class="form-select" id="zona_lugar" name="zona_lugar" required>
+                                                <option value="CENTRAL">CENTRAL</option>
+                                                <option value="REGIONAL">REGIONAL</option>
+                                            </select>
                                         </div>
                                     </div>
                                     <div class="mb-3">
@@ -203,6 +221,7 @@ if ($result_lugares) {
                                             <tr>
                                                 <th>ID</th>
                                                 <th>Nombre</th>
+                                                <th>Zona</th>
                                                 <th>Activo</th>
                                                 <th>Acciones</th>
                                             </tr>
@@ -213,6 +232,11 @@ if ($result_lugares) {
                                                 <tr>
                                                     <td><?php echo $lugar['id']; ?></td>
                                                     <td><?php echo htmlspecialchars($lugar['nombre']); ?></td>
+                                                    <td>
+                                                        <span class="badge bg-<?php echo $lugar['zona'] === 'REGIONAL' ? 'info' : 'primary'; ?>">
+                                                            <?php echo htmlspecialchars($lugar['zona']); ?>
+                                                        </span>
+                                                    </td>
                                                     <td>
                                                         <span class="badge bg-<?php echo $lugar['activo'] ? 'success' : 'danger'; ?>">
                                                             <?php echo $lugar['activo'] ? 'Activo' : 'Inactivo'; ?>

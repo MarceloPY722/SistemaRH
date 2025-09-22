@@ -1196,6 +1196,48 @@ ALTER TABLE `guardias_realizadas`
 ALTER TABLE `guardias_semanales`
   ADD CONSTRAINT `fk_guardias_semanales_usuarios` FOREIGN KEY (`usuario_id`) REFERENCES `usuarios` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `asignaciones_temporales_guardia`
+--
+
+CREATE TABLE `asignaciones_temporales_guardia` (
+  `id` int NOT NULL,
+  `fecha_guardia` date NOT NULL COMMENT 'Fecha de la guardia',
+  `orden_dia` varchar(50) COLLATE utf8mb4_spanish2_ci NOT NULL COMMENT 'Número de orden del día',
+  `sector_id` int NOT NULL COMMENT 'ID del sector (lugar_guardia_id)',
+  `policia_id` int NOT NULL COMMENT 'ID del policía asignado',
+  `posicion_sector` int NOT NULL COMMENT 'Posición dentro del sector (1=primero, 2=segundo, etc.)',
+  `posicion_original_lista` int NOT NULL COMMENT 'Posición original en lista_guardias',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish2_ci COMMENT='Tabla temporal para almacenar asignaciones antes de generar PDF';
+
+-- --------------------------------------------------------
+
+--
+-- Filtros para la tabla `asignaciones_temporales_guardia`
+--
+ALTER TABLE `asignaciones_temporales_guardia`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_fecha_orden` (`fecha_guardia`, `orden_dia`),
+  ADD KEY `idx_sector_posicion` (`sector_id`, `posicion_sector`),
+  ADD KEY `fk_asignaciones_temp_policia` (`policia_id`),
+  ADD KEY `fk_asignaciones_temp_sector` (`sector_id`);
+
+--
+-- AUTO_INCREMENT de la tabla `asignaciones_temporales_guardia`
+--
+ALTER TABLE `asignaciones_temporales_guardia`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+--
+-- Filtros para la tabla `asignaciones_temporales_guardia`
+--
+ALTER TABLE `asignaciones_temporales_guardia`
+  ADD CONSTRAINT `fk_asignaciones_temp_policia` FOREIGN KEY (`policia_id`) REFERENCES `policias` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_asignaciones_temp_sector` FOREIGN KEY (`sector_id`) REFERENCES `lugares_guardias` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
 --
 -- Filtros para la tabla `historial_guardias_policia`
 --
