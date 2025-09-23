@@ -333,30 +333,6 @@ try {
                     </div>
                 </div>
 
-                <!-- Stats Overview -->
-                <div class="row mb-3">
-                    <div class="col-12">
-                        <div class="stats-grid">
-                            <div class="stat-card">
-                                <div class="stat-number">18</div>
-                                <div class="stat-label">Lugares</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-number">2</div>
-                                <div class="stat-label">Zonas</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-number">7</div>
-                                <div class="stat-label">Días</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-number">FIFO</div>
-                                <div class="stat-label">Prioridad</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Main Form -->
                 <div class="row">
                     <div class="col-xl-10 col-lg-12 mx-auto">
@@ -378,7 +354,7 @@ try {
                                 
                                 <div class="row">
                                     <!-- Formulario -->
-                                    <div class="col-md-6">
+                                    <div class="col-md-8 mx-auto">
                                         <form method="POST" id="formGenerarGuardia" class="needs-validation" novalidate>
                                             <!-- Fecha de Guardia -->
                                             <div class="mb-3">
@@ -398,12 +374,16 @@ try {
                                                     <i class="fas fa-file-alt text-primary me-1"></i>
                                                     Número de Orden del Día *
                                                 </label>
-                                                <input type="text" class="form-control form-control-modern" 
-                                                       id="orden_dia" name="orden_dia" 
-                                                       placeholder="Ej: 27/2025" 
-                                                       value="<?php echo htmlspecialchars($ultimo_orden); ?>" 
-                                                       required>
-                                                <div class="form-text text-muted">Formato: número/año (ej: 27/2025)</div>
+                                                <div class="input-group">
+                                                    <input type="text" class="form-control form-control-modern" 
+                                                           id="orden_dia" name="orden_dia" 
+                                                           placeholder="Cargando..." 
+                                                           required>
+                                                    <button type="button" class="btn btn-outline-secondary" id="btnAutocompletar" title="Autocompletar próximo número">
+                                                        <i class="fas fa-magic"></i>
+                                                    </button>
+                                                </div>
+                                                <div class="form-text text-muted">Formato: número/año (ej: 27/2025) - Se autocompleta automáticamente</div>
                                             </div>
                                             
                                             <!-- Action Buttons -->
@@ -418,40 +398,6 @@ try {
                                                 </a>
                                             </div>
                                         </form>
-                                    </div>
-                                    
-                                    <!-- Información del Sistema -->
-                                    <div class="col-md-6">
-                                        <h6 class="form-label-modern mb-2">
-                                            <i class="fas fa-info-circle text-primary me-1"></i>
-                                            Información del Sistema
-                                        </h6>
-                                        <div class="alert info-panel">
-                                            <div class="info-item">
-                                                <i class="fas fa-building text-primary"></i>
-                                                <div>
-                                                    <strong>CENTRALES:</strong> Dom-Jue (1,3,5,7,9,11,13,15,17)
-                                                </div>
-                                            </div>
-                                            <div class="info-item">
-                                                <i class="fas fa-map-marker-alt text-success"></i>
-                                                <div>
-                                                    <strong>REGIONALES:</strong> Vie-Sáb (2,4,6,8,10,12,14,16,18)
-                                                </div>
-                                            </div>
-                                            <div class="info-item">
-                                                <i class="fas fa-phone-slash text-warning"></i>
-                                                <div>
-                                                    <strong>Domingos:</strong> IDs 7-8 deshabilitados
-                                                </div>
-                                            </div>
-                                            <div class="info-item">
-                                                <i class="fas fa-users text-info"></i>
-                                                <div>
-                                                    <strong>Personal:</strong> 9-10: 4 pers. | 17-18: 3 pers.
-                                                </div>
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -664,24 +610,6 @@ try {
         
         // Verificar duplicados cuando cambie la fecha
         document.getElementById('fecha_guardia').addEventListener('change', function() {
-            const fecha = new Date(this.value);
-            const diaSemana = fecha.getDay(); // 0=Domingo, 1=Lunes, ..., 6=Sábado
-            
-            let zona = '';
-            if (diaSemana === 0 || diaSemana >= 1 && diaSemana <= 4) { // Domingo a Jueves
-                zona = 'CENTRAL';
-            } else { // Viernes y Sábado
-                zona = 'REGIONAL';
-            }
-            
-            // Mostrar alerta informativa
-            const infoDiv = document.querySelector('.alert-info');
-            if (infoDiv) {
-                infoDiv.innerHTML = `<strong>Día seleccionado:</strong> ${fecha.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}<br>
-                                   <strong>Zona:</strong> ${zona}<br>
-                                   <strong>Lugares activos:</strong> ${zona === 'CENTRAL' ? '1,3,5,7,9,11,13,15,17' : '2,4,6,8,10,12,14,16,18'}${diaSemana === 0 ? ' (IDs 7-8 deshabilitados)' : ''}`;
-            }
-            
             // Verificar duplicados completos (ambos campos si están disponibles)
             verificarDuplicado();
         });
@@ -696,8 +624,44 @@ try {
             }, 500);
         });
         
-        // Verificar duplicados al cargar la página si hay valores
+        // Función para cargar el próximo número de orden automáticamente
+        async function cargarProximoOrden() {
+            try {
+                const response = await fetch('/SistemaRH/admin/guardias/api/obtener_proximo_orden.php', {
+                    method: 'GET',
+                    credentials: 'same-origin', // Incluir cookies de sesión
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('orden_dia').value = data.proximo_orden;
+                    document.getElementById('orden_dia').placeholder = data.proximo_orden;
+                } else {
+                    console.error('Error al obtener próximo orden:', data.error);
+                    document.getElementById('orden_dia').placeholder = 'Ej: 1/2025';
+                }
+            } catch (error) {
+                console.error('Error de conexión:', error);
+                document.getElementById('orden_dia').placeholder = 'Ej: 1/2025';
+            }
+        }
+        
+        // Botón para autocompletar manualmente
+        document.getElementById('btnAutocompletar').addEventListener('click', function() {
+            cargarProximoOrden();
+        });
+        
+        // Cargar automáticamente al iniciar la página
         document.addEventListener('DOMContentLoaded', function() {
+            cargarProximoOrden();
             verificarDuplicado();
         });
     </script>
