@@ -56,8 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // Determinar la región según el día de la semana
-        $dia_semana = date('w', strtotime($fecha_guardia)); // 0=domingo, 1=lunes, etc.
-        $region = ($dia_semana == 0) ? 'REGIONAL' : 'CENTRAL'; // Domingo = REGIONAL, otros días = CENTRAL
+        $dia_semana = date('N', strtotime($fecha_guardia)); // 1=Lunes, 2=Martes, ..., 7=Domingo
+        $region = in_array($dia_semana, [7, 1, 2, 3, 4]) ? 'CENTRAL' : 'REGIONAL'; // Domingo a Jueves = CENTRAL, Viernes y Sábado = REGIONAL
         
         // 1. Crear registro en guardias_generadas
         $query_guardia = "INSERT INTO guardias_generadas (fecha_guardia, orden_dia, region, estado) VALUES (?, ?, ?, 'PROGRAMADA')";

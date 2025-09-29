@@ -24,11 +24,7 @@ function convertToLatin1($text) {
 // Obtener la fecha de la guardia (por defecto hoy)
 $fecha_guardia = isset($_GET['fecha']) ? $_GET['fecha'] : date('Y-m-d');
 $generar_pdf = isset($_GET['pdf']) && $_GET['pdf'] == '1';
-
-// Si se accede directamente con fecha (sin otros parámetros), generar PDF automáticamente
-if ($fecha_guardia && $fecha_guardia != date('Y-m-d') && !isset($_GET['pdf']) && !isset($_GET['view'])) {
-    $generar_pdf = true;
-}
+$solo_asistentes = isset($_GET['asistentes']) && $_GET['asistentes'] == '1';
 $es_domingo = (date('w', strtotime($fecha_guardia)) == 0);
 
 // IMPORTANTE: Obtener datos ANTES de cualquier salida HTML para PDF
@@ -49,48 +45,33 @@ if (!$guardia) {
     // Obtener el personal asignado
     $stmt = $conn->prepare("
         SELECT 
-            ggd.posicion_asignacion,
-            p.legajo,
-            p.nombre,
-            p.apellido,
-            p.cin,
-            g.nombre as grado,
-            g.nivel_jerarquia,
-            e.nombre as especialidad,
-            p.comisionamiento,
-            lg.nombre as lugar_guardia,
-            lg.zona as region
-        FROM guardias_generadas_detalle ggd
-        JOIN guardias_generadas gg ON ggd.guardia_generada_id = gg.id
-        JOIN policias p ON ggd.policia_id = p.id
-        LEFT JOIN grados g ON p.grado_id = g.id
-        LEFT JOIN especialidades e ON p.especialidad_id = e.id
-        LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
-        WHERE gg.fecha_guardia = ?
-        ORDER BY ggd.posicion_asignacion
-    ");
-    $stmt = $conn->prepare("
-        SELECT 
+            ggd.id as detalle_id,
             ggd.posicion_asignacion,
             p.legajo,
             p.nombre,
             p.apellido,
             p.cin,
             p.telefono,
-            g.nombre as grado,
-            g.nivel_jerarquia,
+            tg.nombre as grado,
+            tg.abreviatura as grado_abreviatura,
+            tg.nivel_jerarquia,
             e.nombre as especialidad,
             p.comisionamiento,
             lg.nombre as lugar_guardia,
-            lg.zona as region
+            lg.zona as region,
+            COALESCE(ga.asistio, 1) as asistio,
+            ga.hora_llegada,
+            ga.hora_salida,
+            ga.observaciones as observaciones_asistencia
         FROM guardias_generadas_detalle ggd
         JOIN guardias_generadas gg ON ggd.guardia_generada_id = gg.id
         JOIN policias p ON ggd.policia_id = p.id
-        LEFT JOIN grados g ON p.grado_id = g.id
+        LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
         LEFT JOIN especialidades e ON p.especialidad_id = e.id
         LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
-        WHERE gg.fecha_guardia = ?
-        ORDER BY g.nivel_jerarquia DESC, p.legajo DESC
+        LEFT JOIN guardias_asistencia ga ON ggd.id = ga.guardia_generada_detalle_id
+        WHERE gg.fecha_guardia = ?" . ($solo_asistentes ? " AND COALESCE(ga.asistio, 1) = 1" : "") . "
+        ORDER BY tg.nivel_jerarquia DESC, p.legajo DESC
     ");
     $stmt->execute([$fecha_guardia]);
     $personal_asignado = $stmt->fetchAll();
@@ -132,63 +113,314 @@ if ($generar_pdf && $fecha_guardia && $guardia) {
     
     $pdf = new FPDF();
     $pdf->AddPage();
-    $pdf->SetFont('Arial', 'B', 16);
+    $pdf->SetMargins(20, 10, 20); // Aumentar márgenes laterales: izquierdo, superior, derecho
+    $pdf->SetAutoPageBreak(true, 10); // Mantener margen inferior
     
-    // Encabezado
-    $pdf->Cell(0, 10, convertToLatin1('ORDEN DEL DÍA'), 0, 1, 'C');
-    $pdf->SetFont('Arial', 'B', 12);
-    $pdf->Cell(0, 8, convertToLatin1('Fecha: ' . date('d/m/Y', strtotime($fecha_guardia))), 0, 1, 'C');
-    $pdf->Cell(0, 8, convertToLatin1('Región: ' . $guardia['region']), 0, 1, 'C');
-    $pdf->Cell(0, 8, convertToLatin1('Generada: ' . date('d/m/Y H:i')), 0, 1, 'C');
-    $pdf->Ln(10);
+    // Fecha en la esquina superior derecha (pequeña)
+    $pdf->SetFont('Times', '', 9);
+    
+    // Traducir meses al español
+    $meses_es = [
+        'January' => 'enero',
+        'February' => 'febrero',
+        'March' => 'marzo',
+        'April' => 'abril',
+        'May' => 'mayo',
+        'June' => 'junio',
+        'July' => 'julio',
+        'August' => 'agosto',
+        'September' => 'septiembre',
+        'October' => 'octubre',
+        'November' => 'noviembre',
+        'December' => 'diciembre'
+    ];
+    
+    $dia = date('d', strtotime($fecha_guardia));
+    $mes_en = date('F', strtotime($fecha_guardia));
+    $año = date('Y', strtotime($fecha_guardia));
+    $mes_es = $meses_es[$mes_en] ?? strtolower($mes_en);
+    
+    $pdf->Cell(0, 5, convertToLatin1('Asunción, ' . $dia . ' de ' . $mes_es . ' de ' . $año . '.-'), 0, 1, 'R');
+    $pdf->Ln(3);
+    
+    // SEDE CENTRAL (centrado y subrayado)
+    $pdf->SetFont('Times', 'BU', 9);
+    $pdf->Cell(0, 6, convertToLatin1('SEDE CENTRAL'), 0, 1, 'C');
+    $pdf->Ln(1);
+    
+    // ORDEN DEL DÍA con número
+    $pdf->SetFont('Times', 'BU', 9);
+    $orden_numero = $guardia['orden_dia'] ?? 'N/A';
+    $pdf->Cell(0, 6, convertToLatin1('ORDEN DEL DÍA N° ' . $orden_numero), 0, 1, 'C');
+    $pdf->Ln(2);
+    
+    $pdf->SetFont('Times', '', 9);
+    
+    $dia_inicio = date('d', strtotime($fecha_guardia));
+    $mes_inicio_en = date('F', strtotime($fecha_guardia));
+    $año_inicio = date('Y', strtotime($fecha_guardia));
+    $mes_inicio_es = $meses_es[$mes_inicio_en] ?? strtolower($mes_inicio_en);
+    $fecha_inicio = $dia_inicio . ' DE ' . strtoupper($mes_inicio_es) . ' DE ' . $año_inicio;
+    
+    $dia_fin = date('d', strtotime($fecha_guardia . ' +1 day'));
+    $mes_fin_en = date('F', strtotime($fecha_guardia . ' +1 day'));
+    $año_fin = date('Y', strtotime($fecha_guardia . ' +1 day'));
+    $mes_fin_es = $meses_es[$mes_fin_en] ?? strtolower($mes_fin_en);
+    $fecha_fin = $dia_fin . ' DE ' . strtoupper($mes_fin_es) . ' DE ' . $año_fin;
+    
+    $dia_semana = date('l', strtotime($fecha_guardia));
+    $dia_siguiente = date('l', strtotime($fecha_guardia . ' +1 day'));
+    
+    $dias_es = [
+        'Monday' => 'LUNES',
+        'Tuesday' => 'MARTES', 
+        'Wednesday' => 'MIÉRCOLES',
+        'Thursday' => 'JUEVES',
+        'Friday' => 'VIERNES',
+        'Saturday' => 'SÁBADO',
+        'Sunday' => 'DOMINGO'
+    ];
+    $dia_es = $dias_es[$dia_semana] ?? strtoupper($dia_semana);
+    $dia_siguiente_es = $dias_es[$dia_siguiente] ?? strtoupper($dia_siguiente);
+    
+    $texto_parte1 = "POR LA QUE SE DESIGNA PERSONAL DE GUARDIA Y PERSONAL PARA CUMPLIR FUNCIONES ADMINISTRATIVAS (TELEFONISTA) PARA EL ";
+    $texto_parte2 = "DÍA " . $dia_es . " " . $fecha_inicio . " DESDE LAS 07:00 HS. HASTA EL DÍA " . $dia_siguiente_es . " " . $fecha_fin . "; 07:00 HS.";
+    $texto_parte3 = " A LOS SIGUIENTES:";
+    
+    // Dividir el texto en partes para aplicar formato diferente
+    $pdf->SetFont('Times', '', 9); // Texto normal
+    $pdf->Write(5, convertToLatin1($texto_parte1));
+    
+    $pdf->SetFont('Times', 'B', 9); // Negrita para la parte del día y fecha
+    $pdf->Write(5, convertToLatin1($texto_parte2));
+    
+    $pdf->SetFont('Times', '', 9); // Volver a texto normal
+    $pdf->Write(5, convertToLatin1($texto_parte3));
+    
+    $pdf->Ln(3);
 
-    // Generar contenido para cada puesto individual (igual que la vista previa)
-    foreach ($puestos_requeridos as $posicion => $puesto_nombre) {
-        // Título del puesto
-        $pdf->SetFont('Arial', 'B', 10);
-        $pdf->SetFillColor(0, 123, 255); // Color azul como en la vista previa
-        $pdf->SetTextColor(255, 255, 255);
-        $pdf->Cell(0, 8, convertToLatin1($puesto_nombre), 1, 1, 'L', true);
-        $pdf->SetTextColor(0, 0, 0);
+    $personal_por_lugar = [];
+    
+    foreach ($personal_asignado as $persona) {
+        $posicion = $persona['posicion_asignacion'];
+        $lugar = $puestos_requeridos[$posicion] ?? 'PUESTO DESCONOCIDO';
         
-        if (isset($personal_por_posicion[$posicion]) && !empty($personal_por_posicion[$posicion])) {
-            $persona = $personal_por_posicion[$posicion][0]; // Tomar el primer elemento del array
-            
-            // Información del oficial
-            $pdf->SetFont('Arial', 'B', 9);
-            $nombre_completo = $persona['nombre'] . ' ' . $persona['apellido'];
-            $pdf->Cell(0, 6, convertToLatin1('  ' . $nombre_completo), 0, 1, 'L');
-            
-            // Grado y región
-            $pdf->SetFont('Arial', '', 8);
-            $grado_region = 'Grado: ' . $persona['grado'] . ' | Region: ' . $persona['region'];
-            $pdf->Cell(0, 5, convertToLatin1('  ' . $grado_region), 0, 1, 'L');
-            
-            // Detalles
-            $pdf->SetFont('Arial', '', 8);
-            $pdf->Cell(0, 4, convertToLatin1('  Legajo: ' . $persona['legajo']), 0, 1, 'L');
-            $pdf->Cell(0, 4, convertToLatin1('  CIN: ' . $persona['cin']), 0, 1, 'L');
-            $pdf->Cell(0, 4, convertToLatin1('  Telefono: ' . ($persona['telefono'] ?: 'No registrado')), 0, 1, 'L');
-            
-            if ($persona['especialidad']) {
-                $pdf->Cell(0, 4, convertToLatin1('  Especialidad: ' . $persona['especialidad']), 0, 1, 'L');
-            }
-            
-            if ($persona['comisionamiento']) {
-                $pdf->Cell(0, 4, convertToLatin1('  Comisionamiento: ' . $persona['comisionamiento']), 0, 1, 'L');
-            }
-            
-            $pdf->Cell(0, 4, convertToLatin1('  Sector: ' . $puesto_nombre), 0, 1, 'L');
-            
-        } else {
-            // Sin asignar
-            $pdf->SetFont('Arial', 'I', 9);
-            $pdf->SetFillColor(248, 249, 250); // Color gris claro
-            $pdf->Cell(0, 20, convertToLatin1('Sin asignar'), 1, 1, 'C', true);
+        if (strpos($lugar, 'NÚMERO DE GUARDIA') !== false) {
+            $lugar = 'NÚMERO DE GUARDIA';
         }
         
-        $pdf->Ln(3); // Espacio entre puestos
+        if (strpos($lugar, 'SANIDAD DE GUARDIA') !== false) {
+            $lugar = 'SANIDAD DE GUARDIA';
+        }
+        
+        if (!isset($personal_por_lugar[$lugar])) {
+            $personal_por_lugar[$lugar] = [];
+        }
+        $personal_por_lugar[$lugar][] = $persona;
     }
+    
+    // Definir el orden de los lugares
+    $orden_lugares = [
+        'JEFE DE SERVICIO',
+        'JEFE DE CUARTEL', 
+        'OFICIAL DE GUARDIA',
+        'ATENCIÓN TELEFÓNICA EXCLUSIVA',
+        'NÚMERO DE GUARDIA',
+        'CONDUCTOR DE GUARDIA',
+        'DE 06:30 HORAS A 22:00 HS GUARDIA Y 22:00 HS AL LLAMADO HASTA 07:00 HS DEL DÍA SIGUIENTE',
+        'TENIDA: DE REGLAMENTO CON PLACA IDENTIFICATORIA',
+        'SANIDAD DE GUARDIA'
+    ];
+    
+    // Agregar separación antes de comenzar con las guardias
+    $pdf->Ln(1);
+    
+    // Generar contenido por lugar de guardia
+    foreach ($orden_lugares as $lugar) {
+        if (isset($personal_por_lugar[$lugar]) && !empty($personal_por_lugar[$lugar])) {
+            
+            // Agregar separación adicional antes del JEFE DE SERVICIO para distinguir el inicio
+            if ($lugar === 'JEFE DE SERVICIO') {
+                $pdf->Ln(2); // Separación adicional antes del JEFE DE SERVICIO
+            }
+            
+            // Verificar si es una de las tres primeras posiciones especiales
+            $es_posicion_especial = in_array($lugar, ['JEFE DE SERVICIO', 'JEFE DE CUARTEL', 'OFICIAL DE GUARDIA']);
+            
+            if ($es_posicion_especial) {
+                // Formato especial para las tres primeras posiciones
+                foreach ($personal_por_lugar[$lugar] as $persona) {
+                    // Usar abreviatura del grado
+                    $grado_abreviado = $persona['grado_abreviatura'] ?: $persona['grado'] ?: '';
+                    $nombre_completo = ($persona['nombre'] ?: '') . ' ' . ($persona['apellido'] ?: '');
+                    $comisionamiento = $persona['comisionamiento'] ? '(' . $persona['comisionamiento'] . ')' : '';
+                    $telefono = $persona['telefono'] ?: 'Sin teléfono';
+                    
+                    // Construir la línea con puntos de separación
+                    $lugar_texto = strtoupper($lugar) . ':';
+                    $resto_texto = ' ' . strtoupper($grado_abreviado ?: '') . ' ' . strtoupper(trim($nombre_completo)) . ' ' . strtoupper($comisionamiento ?: '');
+                    
+                    // Calcular espacio para puntos
+                    $pdf->SetFont('Times', '', 9);
+                    $ancho_disponible = 170; // Ancho de página menos márgenes laterales aumentados
+                    $ancho_lugar = $pdf->GetStringWidth(convertToLatin1($lugar_texto));
+                    $ancho_resto = $pdf->GetStringWidth(convertToLatin1($resto_texto));
+                    $ancho_telefono = $pdf->GetStringWidth(convertToLatin1(' ' . $telefono));
+                    $ancho_puntos = $ancho_disponible - $ancho_lugar - $ancho_resto - $ancho_telefono;
+                    $num_puntos = max(3, min(15, floor($ancho_puntos / $pdf->GetStringWidth('.')))); // Mínimo 3, máximo 15 puntos
+                    $puntos = str_repeat('.', $num_puntos);
+                    
+                    // Escribir lugar con negrita y subrayado de fuente
+                    $pdf->SetFont('Times', 'BU', 9);
+                    $pdf->Write(5, convertToLatin1($lugar_texto));
+                    
+                    // Escribir resto en formato normal
+                    $pdf->SetFont('Times', '', 9);
+                    $linea_resto = $resto_texto . $puntos . ' ' . $telefono;
+                    $pdf->Write(5, convertToLatin1($linea_resto));
+                    $pdf->Ln(3);
+                }
+                
+                $pdf->Ln(2); // Espacio entre lugares
+            } else {
+                // Formato normal para el resto de posiciones
+                
+                // Título del lugar en negrita y subrayado de fuente
+                $pdf->SetFont('Times', 'BU', 9);
+                $pdf->Cell(0, 5, convertToLatin1($lugar), 0, 1, 'L');
+                $pdf->Ln(2);
+                
+                // Personal asignado a este lugar
+                foreach ($personal_por_lugar[$lugar] as $persona) {
+                    $pdf->SetFont('Times', '', 9);
+                    
+                    // Usar abreviatura del grado
+                    $grado_abreviado = $persona['grado_abreviatura'] ?: $persona['grado'] ?: '';
+                    $nombre_completo = ($persona['nombre'] ?: '') . ' ' . ($persona['apellido'] ?: '');
+                    $comisionamiento = $persona['comisionamiento'] ? '(' . $persona['comisionamiento'] . ')' : '';
+                    $telefono = $persona['telefono'] ?: 'Sin teléfono';
+                    
+                    // Formato con puntos de separación: GRADO NOMBRE (COMISIONAMIENTO) ..... TELÉFONO
+                    $linea_persona = strtoupper($grado_abreviado ?: '') . ' ' . strtoupper(trim($nombre_completo)) . ' ' . strtoupper($comisionamiento ?: '');
+                    
+                    // Calcular espacio para puntos (reducido)
+                    $pdf->SetFont('Times', '', 9);
+                    $ancho_disponible = 170; // Ancho de página menos márgenes laterales aumentados
+                    $ancho_persona = $pdf->GetStringWidth(convertToLatin1($linea_persona));
+                    $ancho_telefono = $pdf->GetStringWidth(convertToLatin1(' ' . $telefono));
+                    $ancho_puntos = $ancho_disponible - $ancho_persona - $ancho_telefono;
+                    $num_puntos = max(3, min(15, floor($ancho_puntos / $pdf->GetStringWidth('.')))); // Mínimo 3, máximo 15 puntos
+                    $puntos = str_repeat('.', $num_puntos);
+                    
+                    $linea_completa = $linea_persona . $puntos . ' ' . $telefono;
+                    
+                    $pdf->Cell(0, 4, convertToLatin1($linea_completa), 0, 1, 'L');
+                }
+                
+                $pdf->Ln(2); // Espacio entre lugares
+            }
+        }
+    }
+    
+    // Agregar lugares que no están en el orden predefinido
+    foreach ($personal_por_lugar as $lugar => $personal) {
+        if (!in_array($lugar, $orden_lugares)) {
+            // Título del lugar en negrita y subrayado de fuente
+            $pdf->SetFont('Times', 'BU', 9);
+            $pdf->Cell(0, 5, convertToLatin1($lugar), 0, 1, 'L');
+            $pdf->Ln(2);
+            
+            // Personal asignado a este lugar
+            foreach ($personal as $persona) {
+                $pdf->SetFont('Times', '', 9);
+                
+                // Usar abreviatura del grado
+                $grado_abreviado = $persona['grado_abreviatura'] ?: $persona['grado'] ?: '';
+                $nombre_completo = ($persona['nombre'] ?: '') . ' ' . ($persona['apellido'] ?: '');
+                $comisionamiento = $persona['comisionamiento'] ? '(' . $persona['comisionamiento'] . ')' : '';
+                $telefono = $persona['telefono'] ?: 'Sin teléfono';
+                
+                // Formato con puntos de separación: GRADO NOMBRE (COMISIONAMIENTO) ..... TELÉFONO
+                $linea_persona = strtoupper($grado_abreviado ?: '') . ' ' . strtoupper(trim($nombre_completo)) . ' ' . strtoupper($comisionamiento ?: '');
+                
+                // Calcular espacio para puntos
+                $pdf->SetFont('Times', '', 9);
+                $ancho_disponible = 170; // Ancho de página menos márgenes laterales aumentados
+                $ancho_persona = $pdf->GetStringWidth(convertToLatin1($linea_persona));
+                $ancho_telefono = $pdf->GetStringWidth(convertToLatin1(' ' . $telefono));
+                $ancho_puntos = $ancho_disponible - $ancho_persona - $ancho_telefono;
+                $num_puntos = max(3, min(15, floor($ancho_puntos / $pdf->GetStringWidth('.')))); // Mínimo 3, máximo 15 puntos
+                $puntos = str_repeat('.', $num_puntos);
+                
+                $linea_completa = $linea_persona . $puntos . ' ' . $telefono;
+                
+                $pdf->Cell(0, 4, convertToLatin1($linea_completa), 0, 1, 'L');
+            }
+            
+            $pdf->Ln(2); // Espacio entre lugares
+        }
+    }
+    
+    // Agregar texto de formación de guardia
+    $pdf->Ln(6); // Espacio antes del texto
+    
+    // FORMACIÓN GUARDIA ENTRANTE 06:30 HS.-
+    $pdf->SetFont('Times', 'B', 8);
+    $pdf->Write(4, convertToLatin1('FORMACIÓN GUARDIA ENTRANTE'));
+    $pdf->Write(4, convertToLatin1(' 06:30 HS.-'));
+    $pdf->Ln(4);
+    
+    // JEFE DE SERVICIO : UNIFORME DE SERVICIO "B" , BIRRETE Y ARMA REGLAMENTARIA.-
+    $pdf->SetFont('Times', 'B', 8);
+    $pdf->Write(4, convertToLatin1('JEFE DE SERVICIO'));
+    $pdf->Write(4, convertToLatin1(' : UNIFORME DE SERVICIO "B" , BIRRETE Y ARMA REGLAMENTARIA.-'));
+    $pdf->Ln(4);
+    
+    // JEFE DE CUARTEL Y DEMAS COMPONENTES DE LA GUARDIA: CON UNIFORME DE SERVICIO "C" Y TODOS LOS ACCESORIOS (ARMA REGLAMENTARIA, PORTANOMBRE, PLACA, BOLÍGRAFO Y AGENDA.-
+    $pdf->SetFont('Times', 'B', 8);
+    $pdf->Write(4, convertToLatin1('JEFE DE CUARTEL Y DEMAS COMPONENTES DE LA GUARDIA'));
+    $pdf->Write(4, convertToLatin1(': CON UNIFORME DE SERVICIO "C" Y TODOS LOS ACCESORIOS (ARMA REGLAMENTARIA, PORTANOMBRE, PLACA, BOLÍGRAFO Y AGENDA.-'));
+    $pdf->Ln(4);
+    
+    // EL JEFE DE SERVICIO Y JEFE DE CUARTEL, SON RESPONSABLES DIRECTO ANTE EL JEFE DEL DEPARTAMENTO, DEL CONTROL, DISTRIBUCIÓN Y VERIFICACIÓN EN FORMA PERMANENTE DE LA GUARDIA.-
+    $pdf->SetFont('Times', 'B', 8);
+    $pdf->Write(4, convertToLatin1('EL JEFE DE SERVICIO Y JEFE DE CUARTEL'));
+    $pdf->Write(4, convertToLatin1(', SON RESPONSABLES DIRECTO ANTE EL JEFE DEL DEPARTAMENTO, DEL CONTROL, DISTRIBUCIÓN Y VERIFICACIÓN EN FORMA PERMANENTE DE LA GUARDIA.-'));
+    $pdf->Ln(4);
+    
+    // EL JEFE DE SERVICIO DESIGNARÁ UN PERSONAL DE LA GUARDIA,  QUIEN SERÁ EL ENCARGADO DEL CONTROL DE LA LLAVE DE LA DIVISIÓN DE ARCHIVOS DE LA SEDE CENTRAL DEL DEPARTAMENTO Y ASENTARA EN EL LIBRO DE LA GUARDIA.-
+    $pdf->SetFont('Times', 'B', 8);
+    $pdf->Write(4, convertToLatin1('EL JEFE DE SERVICIO'));
+    $pdf->Write(4, convertToLatin1(' DESIGNARÁ UN PERSONAL DE LA GUARDIA,  QUIEN SERÁ EL ENCARGADO DEL CONTROL DE LA LLAVE DE LA DIVISIÓN DE ARCHIVOS DE LA SEDE CENTRAL DEL DEPARTAMENTO Y ASENTARA EN EL LIBRO DE LA GUARDIA.-'));
+    $pdf->Ln(4);
+    
+    // PROHIBIR EL INGRESO A PERSONAS AJENAS AL DEPARTAMENTO DE IDENTIFICACIONES FUERA DEL HORARIO DE ATENCIÓN AL PÚBLICO, SALVO CASO DEBIDAMENTE JUSTIFICADA Y AUTORIZADA POR EL JEFE DE SERVICIO, LA CUAL DEBERÁ SER ASENTADA EN EL LIBRO DE NOVEDADES DE LA OFICINA DE GUARDIA.-
+    $pdf->SetFont('Times', 'B', 8);
+    $pdf->Write(4, convertToLatin1('PROHIBIR EL INGRESO A PERSONAS AJENAS AL DEPARTAMENTO DE IDENTIFICACIONES'));
+    $pdf->Write(4, convertToLatin1(' FUERA DEL HORARIO DE ATENCIÓN AL PÚBLICO, SALVO CASO DEBIDAMENTE JUSTIFICADA Y AUTORIZADA POR EL JEFE DE SERVICIO, LA CUAL DEBERÁ SER ASENTADA EN EL LIBRO DE NOVEDADES DE LA OFICINA DE GUARDIA.-'));
+    $pdf->Ln(6);
+    
+    // CUMPLIDO ARCHIVAR
+    $pdf->SetFont('Times', 'B', 8);
+    $pdf->Cell(0, 4, convertToLatin1('CUMPLIDO ARCHIVAR.'), 0, 1, 'L');
+    $pdf->Ln(6);
+    
+    // Posicionar la firma al final de la página
+    // Calcular la posición Y para colocar la firma al final
+    $altura_pagina = 297; // Altura de página A4 en mm
+    $margen_inferior = 20; // Margen inferior
+    $altura_firma = 20; // Espacio estimado para las 3 líneas de firma
+    $posicion_y_firma = $altura_pagina - $margen_inferior - $altura_firma;
+    
+    // Mover a la posición calculada para la firma
+    $pdf->SetY($posicion_y_firma);
+    
+    // Firma centrada al final de la página
+    $pdf->SetFont('Times', 'B', 12);
+    $pdf->Cell(0, 5, convertToLatin1('SILVIA ACOSTA DE GIMENEZ'), 0, 1, 'C');
+    $pdf->SetFont('Times', '', 10);
+    $pdf->Cell(0, 5, convertToLatin1('Comisario MGAP.'), 0, 1, 'C');
+    $pdf->Cell(0, 5, convertToLatin1('Jefa División RR.HH. - Dpto. de Identificaciones'), 0, 1, 'C');
     
     // Descargar PDF
     $nombre_archivo = 'Guardia_' . date('Y-m-d', strtotime($fecha_guardia)) . '.pdf';
@@ -303,6 +535,20 @@ if ($generar_pdf && $fecha_guardia && $guardia) {
                         </a>
                     </form>
                 </div>
+                <div class="col-md-6 text-end">
+                    <?php if ($guardia): ?>
+                        <div class="btn-group" role="group">
+                            <a href="?fecha=<?php echo $fecha_guardia; ?>" 
+                               class="btn btn-outline-secondary <?php echo !$solo_asistentes ? 'active' : ''; ?>">
+                                <i class="fas fa-users"></i> Todos
+                            </a>
+                            <a href="?fecha=<?php echo $fecha_guardia; ?>&asistentes=1" 
+                               class="btn btn-outline-success <?php echo $solo_asistentes ? 'active' : ''; ?>">
+                                <i class="fas fa-user-check"></i> Solo Asistentes
+                            </a>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
             
             <?php if ($guardia): ?>
@@ -352,6 +598,15 @@ if ($generar_pdf && $fecha_guardia && $guardia) {
                                     <h6 class="mb-2">
                                         <i class="fas fa-user me-2 text-primary"></i>
                                         <?php echo $persona['nombre'] . ' ' . $persona['apellido']; ?>
+                                        <?php if ($persona['asistio'] == 0): ?>
+                                            <span class="badge bg-danger ms-2">
+                                                <i class="fas fa-times"></i> No asistió
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="badge bg-success ms-2">
+                                                <i class="fas fa-check"></i> Asistió
+                                            </span>
+                                        <?php endif; ?>
                                     </h6>
                                     
                                     <div class="mb-2">
@@ -376,6 +631,21 @@ if ($generar_pdf && $fecha_guardia && $guardia) {
                                             <div><strong>Comisionamiento:</strong> <?php echo $persona['comisionamiento']; ?></div>
                                         <?php endif; ?>
                                         <div><strong>Sector:</strong> <?php echo $puesto_nombre; ?></div>
+                                        <?php if ($persona['hora_llegada'] || $persona['hora_salida']): ?>
+                                            <div class="mt-2 p-2 bg-light rounded">
+                                                <?php if ($persona['hora_llegada']): ?>
+                                                    <div><strong>Llegada:</strong> <?php echo $persona['hora_llegada']; ?></div>
+                                                <?php endif; ?>
+                                                <?php if ($persona['hora_salida']): ?>
+                                                    <div><strong>Salida:</strong> <?php echo $persona['hora_salida']; ?></div>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                        <?php if ($persona['observaciones_asistencia']): ?>
+                                            <div class="mt-2 p-2 bg-warning bg-opacity-10 rounded">
+                                                <strong>Observaciones:</strong> <?php echo $persona['observaciones_asistencia']; ?>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             <?php else: ?>
@@ -435,13 +705,96 @@ if ($generar_pdf && $fecha_guardia && $guardia) {
                     <i class="fas fa-file-pdf me-2"></i>Descargar PDF
                 </a>
                 <?php if ($es_superadmin): ?>
-                <button class="btn btn-warning" onclick="regenerarGuardia()">
+                <button class="btn btn-warning me-2" onclick="regenerarGuardia()">
                     <i class="fas fa-sync-alt me-2"></i>Regenerar Guardia
+                </button>
+                <button class="btn btn-success" onclick="mostrarModalAsistencia()">
+                    <i class="fas fa-user-check me-2"></i>Gestionar Asistencia
                 </button>
                 <?php endif; ?>
             <?php endif; ?>
         </div>
     </div>
+
+    <!-- Modal para gestionar asistencia -->
+    <?php if ($guardia && $es_superadmin): ?>
+    <div class="modal fade" id="modalAsistencia" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-user-check me-2"></i>Gestionar Asistencia - <?php echo date('d/m/Y', strtotime($fecha_guardia)); ?>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Policía</th>
+                                    <th>Puesto</th>
+                                    <th>Asistió</th>
+                                    <th>Llegada</th>
+                                    <th>Salida</th>
+                                    <th>Observaciones</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($puestos_requeridos as $posicion => $puesto_nombre): ?>
+                                    <?php if (isset($personal_por_posicion[$posicion])): ?>
+                                        <?php $persona = $personal_por_posicion[$posicion][0]; ?>
+                                        <tr id="fila-<?php echo $persona['detalle_id']; ?>">
+                                            <td>
+                                                <strong><?php echo $persona['nombre'] . ' ' . $persona['apellido']; ?></strong><br>
+                                                <small class="text-muted">Legajo: <?php echo $persona['legajo']; ?></small>
+                                            </td>
+                                            <td><?php echo $puesto_nombre; ?></td>
+                                            <td>
+                                                <select class="form-select form-select-sm" id="asistio-<?php echo $persona['detalle_id']; ?>">
+                                                    <option value="1" <?php echo $persona['asistio'] == 1 ? 'selected' : ''; ?>>Sí</option>
+                                                    <option value="0" <?php echo $persona['asistio'] == 0 ? 'selected' : ''; ?>>No</option>
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <input type="time" class="form-control form-control-sm" 
+                                                       id="llegada-<?php echo $persona['detalle_id']; ?>"
+                                                       value="<?php echo $persona['hora_llegada']; ?>">
+                                            </td>
+                                            <td>
+                                                <input type="time" class="form-control form-control-sm" 
+                                                       id="salida-<?php echo $persona['detalle_id']; ?>"
+                                                       value="<?php echo $persona['hora_salida']; ?>">
+                                            </td>
+                                            <td>
+                                                <textarea class="form-control form-control-sm" rows="2" 
+                                                          id="observaciones-<?php echo $persona['detalle_id']; ?>"
+                                                          placeholder="Observaciones..."><?php echo $persona['observaciones_asistencia']; ?></textarea>
+                                            </td>
+                                            <td>
+                                                <button class="btn btn-sm btn-primary" 
+                                                        onclick="actualizarAsistencia(<?php echo $persona['detalle_id']; ?>)">
+                                                    <i class="fas fa-save"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                    <button type="button" class="btn btn-success" onclick="guardarTodaAsistencia()">
+                        <i class="fas fa-save me-2"></i>Guardar Todo
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -449,6 +802,86 @@ if ($generar_pdf && $fecha_guardia && $guardia) {
             if (confirm('¿Está seguro de que desea regenerar la guardia? Esto eliminará la asignación actual.')) {
                 window.location.href = 'generar_guardia_interface.php?fecha=<?php echo $fecha_guardia; ?>&regenerar=1';
             }
+        }
+
+        function mostrarModalAsistencia() {
+            const modal = new bootstrap.Modal(document.getElementById('modalAsistencia'));
+            modal.show();
+        }
+
+        function actualizarAsistencia(detalleId) {
+            const asistio = document.getElementById('asistio-' + detalleId).value;
+            const llegada = document.getElementById('llegada-' + detalleId).value;
+            const salida = document.getElementById('salida-' + detalleId).value;
+            const observaciones = document.getElementById('observaciones-' + detalleId).value;
+
+            const formData = new FormData();
+            formData.append('detalle_id', detalleId);
+            formData.append('asistio', asistio);
+            formData.append('hora_llegada', llegada);
+            formData.append('hora_salida', salida);
+            formData.append('observaciones', observaciones);
+
+            fetch('api/actualizar_asistencia.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Asistencia actualizada correctamente');
+                    // Actualizar la página para reflejar los cambios
+                    location.reload();
+                } else {
+                    alert('Error al actualizar asistencia: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error al procesar la solicitud');
+            });
+        }
+
+        function guardarTodaAsistencia() {
+            const filas = document.querySelectorAll('#modalAsistencia tbody tr');
+            let promesas = [];
+
+            filas.forEach(fila => {
+                const detalleId = fila.id.replace('fila-', '');
+                const asistio = document.getElementById('asistio-' + detalleId).value;
+                const llegada = document.getElementById('llegada-' + detalleId).value;
+                const salida = document.getElementById('salida-' + detalleId).value;
+                const observaciones = document.getElementById('observaciones-' + detalleId).value;
+
+                const formData = new FormData();
+                formData.append('detalle_id', detalleId);
+                formData.append('asistio', asistio);
+                formData.append('hora_llegada', llegada);
+                formData.append('hora_salida', salida);
+                formData.append('observaciones', observaciones);
+
+                promesas.push(
+                    fetch('api/actualizar_asistencia.php', {
+                        method: 'POST',
+                        body: formData
+                    }).then(response => response.json())
+                );
+            });
+
+            Promise.all(promesas)
+                .then(resultados => {
+                    const errores = resultados.filter(r => !r.success);
+                    if (errores.length === 0) {
+                        alert('Toda la asistencia se guardó correctamente');
+                        location.reload();
+                    } else {
+                        alert('Se guardaron algunos registros, pero hubo errores en ' + errores.length + ' registros');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error al procesar las solicitudes');
+                });
         }
     </script>
 </body>

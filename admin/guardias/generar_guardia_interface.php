@@ -123,6 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Obtener último número de orden para sugerencia
 $ultimo_orden = '';
+$ultimos_tres_ordenes = [];
 try {
     $query = "SELECT numero_orden FROM orden_dia ORDER BY id DESC LIMIT 1";
     $stmt = $conn->prepare($query);
@@ -131,6 +132,17 @@ try {
     if ($result) {
         $ultimo_orden = $result['numero_orden'];
     }
+    
+    // Obtener los últimos 3 órdenes del día generados ordenados por el número del orden del día
+    $query_ultimos = "SELECT orden_dia, fecha_guardia FROM guardias_generadas 
+                      ORDER BY 
+                        CAST(SUBSTRING_INDEX(orden_dia, '/', 1) AS UNSIGNED) DESC,
+                        CAST(SUBSTRING_INDEX(orden_dia, '/', -1) AS UNSIGNED) DESC,
+                        fecha_guardia DESC 
+                      LIMIT 3";
+    $stmt_ultimos = $conn->prepare($query_ultimos);
+    $stmt_ultimos->execute();
+    $ultimos_tres_ordenes = $stmt_ultimos->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     // Silenciar error si la tabla no existe
 }
@@ -333,6 +345,30 @@ try {
                     </div>
                 </div>
 
+                <!-- Stats Overview -->
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-number">18</div>
+                                <div class="stat-label">Lugares</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">2</div>
+                                <div class="stat-label">Zonas</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">7</div>
+                                <div class="stat-label">Días</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">FIFO</div>
+                                <div class="stat-label">Prioridad</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Main Form -->
                 <div class="row">
                     <div class="col-xl-10 col-lg-12 mx-auto">
@@ -354,7 +390,7 @@ try {
                                 
                                 <div class="row">
                                     <!-- Formulario -->
-                                    <div class="col-md-8 mx-auto">
+                                    <div class="col-md-6">
                                         <form method="POST" id="formGenerarGuardia" class="needs-validation" novalidate>
                                             <!-- Fecha de Guardia -->
                                             <div class="mb-3">
@@ -374,16 +410,12 @@ try {
                                                     <i class="fas fa-file-alt text-primary me-1"></i>
                                                     Número de Orden del Día *
                                                 </label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control form-control-modern" 
-                                                           id="orden_dia" name="orden_dia" 
-                                                           placeholder="Cargando..." 
-                                                           required>
-                                                    <button type="button" class="btn btn-outline-secondary" id="btnAutocompletar" title="Autocompletar próximo número">
-                                                        <i class="fas fa-magic"></i>
-                                                    </button>
-                                                </div>
-                                                <div class="form-text text-muted">Formato: número/año (ej: 27/2025) - Se autocompleta automáticamente</div>
+                                                <input type="text" class="form-control form-control-modern" 
+                                                       id="orden_dia" name="orden_dia" 
+                                                       placeholder="Ej: 27/2025" 
+                                                       value="<?php echo htmlspecialchars($ultimo_orden); ?>" 
+                                                       required>
+                                                <div class="form-text text-muted">Formato: número/año (ej: 27/2025)</div>
                                             </div>
                                             
                                             <!-- Action Buttons -->
@@ -398,6 +430,51 @@ try {
                                                 </a>
                                             </div>
                                         </form>
+                                    </div>
+                                    
+                                    <!-- Últimos Órdenes del Día -->
+                                    <div class="col-md-6">
+                                        <?php if (!empty($ultimos_tres_ordenes)): ?>
+                                        <h6 class="form-label-modern mb-2 mt-3">
+                                            <i class="fas fa-history text-primary me-1"></i>
+                                            Últimos 3 Órdenes del Día
+                                        </h6>
+                                        <div class="alert alert-light border">
+                                            <?php foreach ($ultimos_tres_ordenes as $index => $orden): ?>
+                                            <div class="d-flex justify-content-between align-items-center <?php echo $index < count($ultimos_tres_ordenes) - 1 ? 'border-bottom pb-2 mb-2' : ''; ?>">
+                                                <div>
+                                                    <strong class="text-primary"><?php echo htmlspecialchars($orden['orden_dia']); ?></strong>
+                                                </div>
+                                                <div>
+                                                    <small class="text-muted">
+                                                        <i class="fas fa-calendar me-1"></i>
+                                                        <?php echo date('d/m/Y', strtotime($orden['fecha_guardia'])); ?>
+                                                    </small>
+                                                </div>
+                                            </div>
+                                            <?php endforeach; ?>
+                                            <div class="mt-2 pt-2 border-top">
+                                                <small class="text-success">
+                                                    <i class="fas fa-arrow-right me-1"></i>
+                                                    <strong>Próximo sugerido:</strong> 
+                                                    <?php 
+                                                    if (!empty($ultimos_tres_ordenes)) {
+                                                        $ultimo_orden_completo = $ultimos_tres_ordenes[0]['orden_dia'];
+                                                        $partes = explode('/', $ultimo_orden_completo);
+                                                        if (count($partes) >= 2 && is_numeric($partes[0])) {
+                                                            $siguiente_numero = intval($partes[0]) + 1;
+                                                            echo $siguiente_numero . '/' . $partes[1];
+                                                        } else {
+                                                            echo '1/' . date('Y');
+                                                        }
+                                                    } else {
+                                                        echo '1/' . date('Y');
+                                                    }
+                                                    ?>
+                                                </small>
+                                            </div>
+                                        </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
@@ -610,6 +687,24 @@ try {
         
         // Verificar duplicados cuando cambie la fecha
         document.getElementById('fecha_guardia').addEventListener('change', function() {
+            const fecha = new Date(this.value);
+            const diaSemana = fecha.getDay(); // 0=Domingo, 1=Lunes, ..., 6=Sábado
+            
+            let zona = '';
+            if (diaSemana === 0 || diaSemana >= 1 && diaSemana <= 4) { // Domingo a Jueves
+                zona = 'CENTRAL';
+            } else { // Viernes y Sábado
+                zona = 'REGIONAL';
+            }
+            
+            // Mostrar alerta informativa
+            const infoDiv = document.querySelector('.alert-info');
+            if (infoDiv) {
+                infoDiv.innerHTML = `<strong>Día seleccionado:</strong> ${fecha.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}<br>
+                                   <strong>Zona:</strong> ${zona}<br>
+                                   <strong>Lugares activos:</strong> ${zona === 'CENTRAL' ? '1,3,5,7,9,11,13,15,17' : '2,4,6,8,10,12,14,16,18'}${diaSemana === 0 ? ' (IDs 7-8 deshabilitados)' : ''}`;
+            }
+            
             // Verificar duplicados completos (ambos campos si están disponibles)
             verificarDuplicado();
         });
@@ -624,44 +719,8 @@ try {
             }, 500);
         });
         
-        // Función para cargar el próximo número de orden automáticamente
-        async function cargarProximoOrden() {
-            try {
-                const response = await fetch('/SistemaRH/admin/guardias/api/obtener_proximo_orden.php', {
-                    method: 'GET',
-                    credentials: 'same-origin', // Incluir cookies de sesión
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    document.getElementById('orden_dia').value = data.proximo_orden;
-                    document.getElementById('orden_dia').placeholder = data.proximo_orden;
-                } else {
-                    console.error('Error al obtener próximo orden:', data.error);
-                    document.getElementById('orden_dia').placeholder = 'Ej: 1/2025';
-                }
-            } catch (error) {
-                console.error('Error de conexión:', error);
-                document.getElementById('orden_dia').placeholder = 'Ej: 1/2025';
-            }
-        }
-        
-        // Botón para autocompletar manualmente
-        document.getElementById('btnAutocompletar').addEventListener('click', function() {
-            cargarProximoOrden();
-        });
-        
-        // Cargar automáticamente al iniciar la página
+        // Verificar duplicados al cargar la página si hay valores
         document.addEventListener('DOMContentLoaded', function() {
-            cargarProximoOrden();
             verificarDuplicado();
         });
     </script>

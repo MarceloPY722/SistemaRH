@@ -823,8 +823,13 @@ if (isset($_GET['buscar']) && isset($_GET['termino'])) {
                                                     <td>
                                                         <a href="ver_guardias.php?fecha=<?php echo $guardia['fecha_guardia']; ?>" 
                                                            class="btn btn-sm btn-outline-primary" 
-                                                           title="Ver detalles">
+                                                           title="Ver todos los asignados">
                                                             <i class="fas fa-eye"></i>
+                                                        </a>
+                                                        <a href="ver_guardias.php?fecha=<?php echo $guardia['fecha_guardia']; ?>&asistentes=1" 
+                                                           class="btn btn-sm btn-outline-success ms-1" 
+                                                           title="Ver solo asistentes">
+                                                            <i class="fas fa-user-check"></i>
                                                         </a>
                                                         <a href="ver_guardias.php?fecha=<?php echo $guardia['fecha_guardia']; ?>&pdf=1" 
                                                            class="btn btn-sm btn-outline-info ms-1" 
