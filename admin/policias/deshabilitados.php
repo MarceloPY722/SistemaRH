@@ -15,10 +15,18 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'reactivar') {
     $policia_id = (int)$_POST['policia_id'];
     
     if ($policia_id > 0) {
+        $stmt_prev = $conn->prepare("SELECT * FROM policias WHERE id = ?");
+        $stmt_prev->execute([$policia_id]);
+        $policia_prev = $stmt_prev->fetch(PDO::FETCH_ASSOC);
         $sql = "UPDATE policias SET activo = 1 WHERE id = ?";
         $stmt = $conn->prepare($sql);
         
         if ($stmt->execute([$policia_id])) {
+            if (function_exists('auditoriaActualizar')) {
+                auditoriaActualizar('policias', $policia_id, $policia_prev ?: null, [
+                    'activo' => 1
+                ]);
+            }
             $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle'></i> Policía reactivado exitosamente</div>";
         } else {
             $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamacion-triangle'></i> Error al reactivar policía: " . $stmt->errorInfo()[2] . "</div>";

@@ -25,6 +25,7 @@ $fecha_guardia = $asignaciones_data['fecha_guardia'];
 $orden_dia = $asignaciones_data['orden_dia'];
 $zona = $asignaciones_data['zona'];
 $asignaciones = $asignaciones_data['asignaciones'];
+$feriado = !empty($asignaciones_data['feriado']);
 
 $mensaje = '';
 $error = '';
@@ -32,7 +33,15 @@ $error = '';
 // Procesar confirmación y guardar en base de datos
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        $conn->beginTransaction();
+        // Iniciar transacción sólo si no hay una activa (evita errores en motores sin soporte)
+        if (method_exists($conn, 'inTransaction')) {
+            if (!$conn->inTransaction()) {
+                $conn->beginTransaction();
+            }
+        } else {
+            // Fallback en caso de driver sin inTransaction
+            $conn->beginTransaction();
+        }
         
         // Guardar orden del día si no existe
         $query_orden = "INSERT IGNORE INTO orden_dia (numero_orden, año, numero, fecha_creacion, activo) VALUES (?, ?, ?, NOW(), 1)";
@@ -64,6 +73,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt_guardia = $conn->prepare($query_guardia);
         $stmt_guardia->execute([$fecha_guardia, $orden_dia, $region]);
         $guardia_generada_id = $conn->lastInsertId();
+        if (function_exists('auditoriaCrear')) {
+            auditoriaCrear('guardias_generadas', $guardia_generada_id, [
+                'fecha_guardia' => $fecha_guardia,
+                'orden_dia' => $orden_dia,
+                'region' => $region,
+                'estado' => 'PROGRAMADA'
+            ]);
+        }
         
         // 2. Guardar asignaciones en guardias_generadas_detalle
         $posicion_asignacion = 1;
@@ -99,6 +116,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $posicion_original,
                 $observaciones
             ]);
+            if (function_exists('auditoriaCrear')) {
+                $detalle_id = $conn->lastInsertId();
+                auditoriaCrear('guardias_generadas_detalle', $detalle_id, [
+                    'guardia_generada_id' => $guardia_generada_id,
+                    'policia_id' => $asignacion['policia_id'],
+                    'lugar_guardia_id' => $asignacion['lugar_guardia_id'],
+                    'posicion_asignacion' => $posicion_asignacion,
+                    'posicion_lista_original' => $posicion_original,
+                    'observaciones_asignacion' => $observaciones
+                ]);
+            }
             
             $posicion_asignacion++;
         }
@@ -112,9 +140,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $max_pos = $stmt_max_pos->fetch(PDO::FETCH_ASSOC)['max_pos'];
             
             // Mover el policía al final de la lista y actualizar fecha de última guardia
+            $stmt_prev_lista = $conn->prepare("SELECT id, posicion, ultima_guardia_fecha FROM lista_guardias WHERE policia_id = ?");
+            $stmt_prev_lista->execute([$asignacion['policia_id']]);
+            $prev_lista = $stmt_prev_lista->fetch(PDO::FETCH_ASSOC);
             $query_update_pos = "UPDATE lista_guardias SET posicion = ?, ultima_guardia_fecha = ? WHERE policia_id = ?";
             $stmt_update_pos = $conn->prepare($query_update_pos);
             $stmt_update_pos->execute([$max_pos + 1, $fecha_guardia, $asignacion['policia_id']]);
+            if (function_exists('auditoriaActualizar')) {
+                auditoriaActualizar('lista_guardias', $prev_lista['id'] ?? null, $prev_lista ?: null, [
+                    'posicion' => $max_pos + 1,
+                    'ultima_guardia_fecha' => $fecha_guardia
+                ]);
+            }
         }
         
         // 4. Reordenar las posiciones para que sean secuenciales
@@ -123,20 +160,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $query_reorder_main = "UPDATE lista_guardias SET posicion = (@pos := @pos + 1) ORDER BY posicion ASC";
         $conn->exec($query_reorder_main);
+        if (function_exists('auditoriaActualizar')) {
+            auditoriaActualizar('lista_guardias', null, null, [
+                'accion' => 'Reordenamiento secuencial de posiciones'
+            ]);
+        }
         
-        $conn->commit();
+        // Confirmar cambios si hay transacción activa
+        if (!method_exists($conn, 'inTransaction') || $conn->inTransaction()) {
+            $conn->commit();
+        }
         
         // 5. Limpiar sesión y redirigir al PDF
         unset($_SESSION['asignaciones_generadas']);
         $_SESSION['mensaje_exito'] = 'Guardias generadas exitosamente';
         
         // Redirigir directamente al PDF
-        header('Location: ver_guardias.php?fecha=' . $fecha_guardia . '&pdf=1');
+        header('Location: ver_guardias.php?fecha=' . $fecha_guardia . '&pdf=1' . ($feriado ? '&feriado=1' : ''));
         exit();
         
     } catch (PDOException $e) {
-        $conn->rollBack();
+        // Evitar rollback si no hay transacción activa
+        if (method_exists($conn, 'inTransaction') && $conn->inTransaction()) {
+            try { $conn->rollBack(); } catch (Throwable $ignored) {}
+        }
         $error = 'Error al guardar las asignaciones: ' . $e->getMessage();
+    } catch (Throwable $e) {
+        if (method_exists($conn, 'inTransaction') && $conn->inTransaction()) {
+            try { $conn->rollBack(); } catch (Throwable $ignored) {}
+        }
+        $error = 'Error inesperado: ' . $e->getMessage();
     }
 }
 ?>

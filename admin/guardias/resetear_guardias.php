@@ -39,9 +39,15 @@ if (!$es_superadmin) {
 try {
     // Comenzar transacción
     $conn->beginTransaction();
+    if (function_exists('auditoriaReset')) {
+        auditoriaReset('Resetear guardias');
+    }
     
     // Limpiar lista actual
     $conn->exec("DELETE FROM lista_guardias");
+    if (function_exists('auditoriaEliminar')) {
+        auditoriaEliminar('lista_guardias', null, [ 'accion' => 'Eliminar todos los registros' ]);
+    }
     
     // Obtener policías ordenados por jerarquía y legajo (como proxy de antigüedad)
     $policias_sql = "SELECT p.id
@@ -59,6 +65,13 @@ try {
     while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
         $stmt = $conn->prepare("INSERT INTO lista_guardias (policia_id, posicion) VALUES (?, ?)");
         $stmt->execute([$row['id'], $posicion]);
+        if (function_exists('auditoriaCrear')) {
+            $registro_id = $conn->lastInsertId();
+            auditoriaCrear('lista_guardias', $registro_id, [
+                'policia_id' => $row['id'],
+                'posicion' => $posicion
+            ]);
+        }
         $posicion++;
     }
     

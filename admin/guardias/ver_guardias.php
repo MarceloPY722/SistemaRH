@@ -10,7 +10,6 @@ if (!isset($_SESSION['usuario_id'])) {
 require_once '../../cnx/db_connect.php';
 require_once __DIR__ . '/../../lib/fpdf/fpdf.php';
 
-// Verificar rol del usuario
 $stmt_user = $conn->prepare("SELECT rol FROM usuarios WHERE id = ?");
 $stmt_user->execute([$_SESSION['usuario_id']]);
 $usuario_actual = $stmt_user->fetch();
@@ -25,11 +24,8 @@ function convertToLatin1($text) {
 $fecha_guardia = isset($_GET['fecha']) ? $_GET['fecha'] : date('Y-m-d');
 $generar_pdf = isset($_GET['pdf']) && $_GET['pdf'] == '1';
 $solo_asistentes = isset($_GET['asistentes']) && $_GET['asistentes'] == '1';
-$es_domingo = (date('w', strtotime($fecha_guardia)) == 0);
+$es_domingo = (date('w', strtotime($fecha_guardia)) == 0) || (isset($_GET['feriado']) && $_GET['feriado'] == '1');
 
-// IMPORTANTE: Obtener datos ANTES de cualquier salida HTML para PDF
-
-// Verificar si existe una guardia para esta fecha
 $stmt = $conn->prepare("
     SELECT gg.*
     FROM guardias_generadas gg
@@ -39,10 +35,9 @@ $stmt->execute([$fecha_guardia]);
 $guardia = $stmt->fetch();
 
 if (!$guardia) {
-    // No hay guardia para esta fecha
     $personal_asignado = [];
 } else {
-    // Obtener el personal asignado
+    
     $stmt = $conn->prepare("
         SELECT 
             ggd.id as detalle_id,
@@ -78,22 +73,42 @@ if (!$guardia) {
 }
 
 // Definir los puestos según el día
-$puestos_requeridos = [
-    1 => 'JEFE DE SERVICIO',
-    2 => 'JEFE DE CUARTEL', 
-    3 => 'OFICIAL DE GUARDIA',
-    4 => $es_domingo ? 'NÚMERO DE GUARDIA 1' : 'ATENCIÓN TELEFÓNICA EXCLUSIVA',
-    5 => 'NÚMERO DE GUARDIA ' . ($es_domingo ? '2' : '1'),
-    6 => 'NÚMERO DE GUARDIA ' . ($es_domingo ? '3' : '2'),
-    7 => 'NÚMERO DE GUARDIA ' . ($es_domingo ? '4' : '3'),
-    8 => $es_domingo ? 'CONDUCTOR DE GUARDIA' : 'NÚMERO DE GUARDIA 4',
-    9 => $es_domingo ? 'DE 06:30 HORAS A 22:00 HS GUARDIA Y 22:00 HS AL LLAMADO HASTA 07:00 HS DEL DÍA SIGUIENTE' : 'CONDUCTOR DE GUARDIA',
-    10 => $es_domingo ? 'TENIDA: DE REGLAMENTO CON PLACA IDENTIFICATORIA' : 'DE 06:30 HORAS A 22:00 HS GUARDIA Y 22:00 HS AL LLAMADO HASTA 07:00 HS DEL DÍA SIGUIENTE',
-    11 => $es_domingo ? 'SANIDAD DE GUARDIA CON UNIFORME CORRESPONDIENTE 1' : 'TENIDA: DE REGLAMENTO CON PLACA IDENTIFICATORIA',
-    12 => $es_domingo ? 'SANIDAD DE GUARDIA CON UNIFORME CORRESPONDIENTE 2' : 'SANIDAD DE GUARDIA CON UNIFORME CORRESPONDIENTE 1',
-    13 => $es_domingo ? 'SANIDAD DE GUARDIA CON UNIFORME CORRESPONDIENTE 3' : 'SANIDAD DE GUARDIA CON UNIFORME CORRESPONDIENTE 2',
-    14 => !$es_domingo ? 'SANIDAD DE GUARDIA CON UNIFORME CORRESPONDIENTE 3' : null
-];
+if ($es_domingo) {
+    $puestos_requeridos = [
+        1 => 'JEFE DE SERVICIO',
+        2 => 'JEFE DE CUARTEL', 
+        3 => 'OFICIAL DE GUARDIA',
+        4 => 'NÚMERO DE GUARDIA 1',
+        5 => 'NÚMERO DE GUARDIA 2',
+        6 => 'NÚMERO DE GUARDIA 3',
+        7 => 'NÚMERO DE GUARDIA 4',
+        8 => 'NÚMERO DE GUARDIA 5',
+        9 => 'CONDUCTOR DE GUARDIA',
+        10 => 'DE 06:30 HORAS A 22:00 HS GUARDIA Y 22:00 HS AL LLAMADO HASTA 07:00 HS DEL DÍA SIGUIENTE',
+        11 => 'TENIDA: DE REGLAMENTO CON PLACA IDENTIFICATORIA',
+        12 => 'SANIDAD DE GUARDIA CON UNIFORME CORRESPONDIENTE 1',
+        13 => 'SANIDAD DE GUARDIA CON UNIFORME CORRESPONDIENTE 2',
+        14 => 'SANIDAD DE GUARDIA CON UNIFORME CORRESPONDIENTE 3'
+    ];
+} else {
+    $puestos_requeridos = [
+        1 => 'JEFE DE SERVICIO',
+        2 => 'JEFE DE CUARTEL', 
+        3 => 'OFICIAL DE GUARDIA',
+        4 => 'ATENCIÓN TELEFÓNICA EXCLUSIVA',
+        5 => 'NÚMERO DE GUARDIA 1',
+        6 => 'NÚMERO DE GUARDIA 2',
+        7 => 'NÚMERO DE GUARDIA 3',
+        8 => 'NÚMERO DE GUARDIA 4',
+        9 => 'NÚMERO DE GUARDIA 5',
+        10 => 'CONDUCTOR DE GUARDIA',
+        11 => 'DE 06:30 HORAS A 22:00 HS GUARDIA Y 22:00 HS AL LLAMADO HASTA 07:00 HS DEL DÍA SIGUIENTE',
+        12 => 'TENIDA: DE REGLAMENTO CON PLACA IDENTIFICATORIA',
+        13 => 'SANIDAD DE GUARDIA CON UNIFORME CORRESPONDIENTE 1',
+        14 => 'SANIDAD DE GUARDIA CON UNIFORME CORRESPONDIENTE 2',
+        15 => 'SANIDAD DE GUARDIA CON UNIFORME CORRESPONDIENTE 3'
+    ];
+}
 
 // Filtrar puestos nulos
 $puestos_requeridos = array_filter($puestos_requeridos);

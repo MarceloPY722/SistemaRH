@@ -21,33 +21,12 @@ if (!$fecha || !$lugar_id) {
 }
 
 try {
-    $stmt = $conn->prepare("
-        SELECT 
-            gr.id,
-            p.id as policia_id,
-            p.legajo,
-            p.nombre,
-            p.apellido,
-            g.nombre as grado
-        FROM guardias_realizadas gr
-        JOIN policias p ON gr.policia_id = p.id
-        JOIN grados g ON p.grado_id = g.id
-        WHERE DATE(gr.fecha_inicio) = ? AND gr.lugar_guardia_id = ?
-    ");
-    $stmt->bind_param("si", $fecha, $lugar_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    if ($policia = $result->fetch_assoc()) {
-        echo json_encode([
-            'encontrado' => true,
-            'policia' => $policia
-        ]);
-    } else {
-        echo json_encode([
-            'encontrado' => false
-        ]);
-    }
+    // La tabla guardias_realizadas ha sido eliminada
+    // Retornando que no se encontró guardia hasta que se implemente nueva funcionalidad
+    echo json_encode([
+        'encontrado' => false,
+        'message' => 'Funcionalidad temporalmente deshabilitada - tabla guardias_realizadas eliminada'
+    ]);
     
 } catch (Exception $e) {
     echo json_encode(['error' => 'Error en la consulta']);

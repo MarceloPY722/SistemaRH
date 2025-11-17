@@ -101,13 +101,28 @@ if (isset($_SESSION['usuario_id'])) {
                 </li>
 
                 <!-- Reportes -->
-                <li class="nav-item <?php echo (isset($_GET['page']) && $_GET['page'] === 'reportes') ? 'active' : ''; ?>">
-                    <a href="/SistemaRH/admin/reportes/index.php" class="nav-link">
+                <li class="nav-item has-submenu <?php echo (isset($_GET['page']) && $_GET['page'] === 'reportes') ? 'active' : ''; ?>">
+                    <a href="#" class="nav-link">
                         <div class="nav-icon">
                             <i class="fas fa-chart-bar"></i>
                         </div>
                         <span class="nav-text">Reportes</span>
+                        <i class="fas fa-chevron-right submenu-arrow"></i>
                     </a>
+                    <ul class="submenu">
+                        <li>
+                            <a href="/SistemaRH/admin/reportes/index.php" class="submenu-link">
+                                <i class="fas fa-chart-line"></i>
+                                <span>Dashboard de Reportes</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/SistemaRH/admin/reportes/orden_dia.php" class="submenu-link">
+                                <i class="fas fa-calendar-day"></i>
+                                <span>Orden del Día</span>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
 
                 <!-- Separador -->
@@ -134,6 +149,12 @@ if (isset($_SESSION['usuario_id'])) {
                             <a href="/SistemaRH/admin/superadmin/usuarios.php" class="submenu-link">
                                 <i class="fas fa-user-cog"></i>
                                 <span>Gestión de Usuarios</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/SistemaRH/admin/superadmin/policias_csv.php" class="submenu-link">
+                                <i class="fas fa-file-csv"></i>
+                                <span>Importar/Exportar Policías</span>
                             </a>
                         </li>
                         <li>

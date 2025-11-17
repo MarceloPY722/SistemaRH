@@ -38,19 +38,8 @@ try {
     $stmt->execute([$id]);
     $policias = $stmt->fetchAll();
     
-    // Obtener últimas guardias realizadas
-    $stmt = $pdo->prepare("
-        SELECT gr.fecha_inicio, gr.fecha_fin, gr.puesto, p.nombre, p.apellido, tg.nombre as grado
-        FROM guardias_realizadas gr
-        JOIN policias p ON gr.policia_id = p.id
-        LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
-        LEFT JOIN grados g ON tg.grado_id = g.id
-        WHERE gr.lugar_guardia_id = ?
-        ORDER BY gr.fecha_inicio DESC
-        LIMIT 10
-    ");
-    $stmt->execute([$id]);
-    $guardias = $stmt->fetchAll();
+    // Tabla guardias_realizadas eliminada - no hay guardias para mostrar
+    $guardias = [];
     
 } catch (PDOException $e) {
     echo '<p class="text-danger">Error al cargar los detalles: ' . htmlspecialchars($e->getMessage()) . '</p>';

@@ -189,7 +189,7 @@ try {
     echo json_encode(['error' => 'Error interno del servidor']);
 } finally {
     if (isset($conn)) {
-        $conn->close();
+        $conn = null;
     }
 }
 ?>

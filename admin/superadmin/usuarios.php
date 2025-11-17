@@ -54,6 +54,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $conn->prepare("INSERT INTO usuarios (nombre_usuario, contraseña, nombre_completo, email, rol, activo) VALUES (?, ?, ?, ?, ?, 1)");
             $stmt->execute([$username, $hashed_password, $nombre_completo, $email, $rol]);
             
+            $usuario_id = $conn->lastInsertId();
+            
+            // Registrar en auditoría
+            require_once '../inc/auditoria_functions.php';
+            auditoriaCrear('usuarios', $usuario_id, [
+                'nombre_usuario' => $username,
+                'nombre_completo' => $nombre_completo,
+                'email' => $email,
+                'rol' => $rol
+            ]);
+            
             $mensaje = '✅ Usuario creado exitosamente';
             $tipo_mensaje = 'success';
             
@@ -65,8 +76,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('No puedes eliminarte a ti mismo');
             }
             
+            // Obtener datos del usuario antes de eliminar para auditoría
+            $stmt_select = $conn->prepare("SELECT nombre_usuario, nombre_completo, email, rol FROM usuarios WHERE id = ?");
+            $stmt_select->execute([$usuario_id]);
+            $usuario_data = $stmt_select->fetch();
+            
             $stmt = $conn->prepare("DELETE FROM usuarios WHERE id = ?");
             $stmt->execute([$usuario_id]);
+            
+            // Registrar en auditoría
+            require_once '../inc/auditoria_functions.php';
+            auditoriaEliminar('usuarios', $usuario_id, $usuario_data);
             
             $mensaje = '✅ Usuario eliminado exitosamente';
             $tipo_mensaje = 'success';
@@ -80,8 +100,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('No puedes desactivarte a ti mismo');
             }
             
+            // Obtener datos actuales del usuario para auditoría
+            $stmt_select = $conn->prepare("SELECT nombre_usuario, nombre_completo, email, rol, activo FROM usuarios WHERE id = ?");
+            $stmt_select->execute([$usuario_id]);
+            $datos_anteriores = $stmt_select->fetch();
+            
             $stmt = $conn->prepare("UPDATE usuarios SET activo = ? WHERE id = ?");
             $stmt->execute([$nuevo_estado, $usuario_id]);
+            
+            // Registrar en auditoría
+            require_once '../inc/auditoria_functions.php';
+            auditoriaActualizar('usuarios', $usuario_id, $datos_anteriores, [
+                'activo' => $nuevo_estado
+            ]);
             
             $mensaje = '✅ Estado del usuario actualizado';
             $tipo_mensaje = 'success';
@@ -107,16 +138,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        .user-card {
-            border: 2px solid #6f42c1;
-            border-radius: 15px;
-        }
-        .user-badge {
-            font-size: 0.8em;
-        }
-        .table-responsive {
-            max-height: 500px;
-        }
+        .user-card { border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.08); }
+        .user-badge { font-size: 0.8em; }
+        .table-responsive { max-height: 500px; }
+        .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; }
+        .page-header h2 { margin:0; }
+        .card-header.bg-primary { background: linear-gradient(135deg, #104c75 0%, #0d3d5c 100%) !important; }
+        .card-header.bg-info { background: linear-gradient(135deg, #17a2b8 0%, #0d3d5c 100%) !important; }
     </style>
 </head>
 <body>
@@ -127,7 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php include '../inc/sidebar.php'; ?>
             
             <main class="col-md-9 col-lg-10 px-4 py-4">
-                <div class="d-flex justify-content-between align-items-center mb-4">
+                <div class="page-header">
                     <h2><i class="fas fa-user-cog me-2"></i>Gestión de Usuarios</h2>
                     <span class="badge bg-warning text-dark">Super Admin</span>
                 </div>

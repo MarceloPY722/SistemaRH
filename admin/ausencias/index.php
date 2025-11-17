@@ -14,10 +14,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     switch ($action) {
         case 'aprobar':
             $ausencia_id = $_POST['ausencia_id'];
+            $stmt_prev = $conn->prepare("SELECT * FROM ausencias WHERE id = ?");
+            $stmt_prev->execute([$ausencia_id]);
+            $ausencia_prev = $stmt_prev->fetch(PDO::FETCH_ASSOC);
             $sql = "UPDATE ausencias SET estado = 'APROBADA', aprobado_por = ? WHERE id = ?";
             $stmt = $conn->prepare($sql);
             
             if ($stmt->execute([$_SESSION['usuario_id'], $ausencia_id])) {
+                if (function_exists('auditoriaActualizar')) {
+                    auditoriaActualizar('ausencias', $ausencia_id, $ausencia_prev ?: null, [
+                        'estado' => 'APROBADA',
+                        'aprobado_por' => $_SESSION['usuario_id']
+                    ]);
+                }
                 $_SESSION['mensaje'] = 'Ausencia aprobada exitosamente';
                 $_SESSION['tipo_mensaje'] = 'success';
             }
@@ -25,10 +34,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             
         case 'rechazar':
             $ausencia_id = $_POST['ausencia_id'];
+            $stmt_prev = $conn->prepare("SELECT * FROM ausencias WHERE id = ?");
+            $stmt_prev->execute([$ausencia_id]);
+            $ausencia_prev = $stmt_prev->fetch(PDO::FETCH_ASSOC);
             $sql = "UPDATE ausencias SET estado = 'RECHAZADA' WHERE id = ?";
             $stmt = $conn->prepare($sql);
             
             if ($stmt->execute([$ausencia_id])) {
+                if (function_exists('auditoriaActualizar')) {
+                    auditoriaActualizar('ausencias', $ausencia_id, $ausencia_prev ?: null, [
+                        'estado' => 'RECHAZADA'
+                    ]);
+                }
                 $_SESSION['mensaje'] = 'Ausencia rechazada';
                 $_SESSION['tipo_mensaje'] = 'warning';
             }
@@ -47,11 +64,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
                 if ($ausencia_info) {
                     $policia_id = $ausencia_info['policia_id'];
+                    $stmt_prev_aus = $conn->prepare("SELECT * FROM ausencias WHERE id = ?");
+                    $stmt_prev_aus->execute([$ausencia_id]);
+                    $ausencia_prev = $stmt_prev_aus->fetch(PDO::FETCH_ASSOC);
                     
                     // Actualizar el estado de la ausencia a COMPLETADA
                     $sql = "UPDATE ausencias SET estado = 'COMPLETADA', updated_at = NOW() WHERE id = ?";
                     $stmt = $conn->prepare($sql);
                     $stmt->execute([$ausencia_id]);
+                    if (function_exists('auditoriaActualizar')) {
+                        auditoriaActualizar('ausencias', $ausencia_id, $ausencia_prev ?: null, [
+                            'estado' => 'COMPLETADA'
+                        ]);
+                    }
                     
                     // Verificar si el policía tiene otras ausencias activas
                     $stmt_check_otras = $conn->prepare("SELECT COUNT(*) as count FROM ausencias WHERE policia_id = ? AND estado = 'APROBADA' AND id != ? AND (fecha_fin IS NULL OR fecha_fin >= CURDATE()) AND fecha_inicio <= CURDATE()");
@@ -62,6 +87,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     if ($otras_ausencias == 0) {
                         $stmt_restore_estado = $conn->prepare("UPDATE policias SET estado = 'DISPONIBLE' WHERE id = ?");
                         $stmt_restore_estado->execute([$policia_id]);
+                        if (function_exists('auditoriaActualizar')) {
+                            $stmt_prev_pol = $conn->prepare("SELECT * FROM policias WHERE id = ?");
+                            $stmt_prev_pol->execute([$policia_id]);
+                            $policia_prev = $stmt_prev_pol->fetch(PDO::FETCH_ASSOC);
+                            auditoriaActualizar('policias', $policia_id, $policia_prev ?: null, [
+                                'estado' => 'DISPONIBLE'
+                            ]);
+                        }
                     }
                 }
                 

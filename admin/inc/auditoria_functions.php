@@ -2,6 +2,44 @@
 // Funciones de auditoría del sistema
 
 /**
+ * Obtener IP del cliente de forma robusta (tras proxies y Cloudflare)
+ */
+function obtenerIPCliente() {
+    $ipHeaders = [
+        'HTTP_CF_CONNECTING_IP',
+        'HTTP_X_REAL_IP',
+        'HTTP_CLIENT_IP',
+        'HTTP_X_FORWARDED_FOR',
+        'HTTP_X_FORWARDED',
+        'HTTP_X_CLUSTER_CLIENT_IP',
+        'HTTP_FORWARDED_FOR',
+        'HTTP_FORWARDED',
+        'REMOTE_ADDR'
+    ];
+
+    foreach ($ipHeaders as $key) {
+        if (!empty($_SERVER[$key])) {
+            $value = $_SERVER[$key];
+            // Si viene una lista (X-Forwarded-For), tomar el primer IP
+            if ($key === 'HTTP_X_FORWARDED_FOR') {
+                $parts = array_map('trim', explode(',', $value));
+                $value = $parts[0];
+            }
+            // Normalizar loopback IPv6 a IPv4 para mejor lectura en reportes
+            if ($value === '::1') {
+                return '127.0.0.1';
+            }
+            // Validar formato de IP
+            if (filter_var($value, FILTER_VALIDATE_IP)) {
+                return $value;
+            }
+        }
+    }
+
+    return 'UNKNOWN';
+}
+
+/**
  * Registrar acción en el sistema de auditoría
  * @param string $accion Descripción de la acción realizada
  * @param string|null $tabla_afectada Tabla afectada por la acción
@@ -22,7 +60,7 @@ function registrarAuditoria($accion, $tabla_afectada = null, $registro_id = null
         $datos_nuevos = json_encode($datos_nuevos, JSON_UNESCAPED_UNICODE);
     }
     
-    $ip_address = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+    $ip_address = obtenerIPCliente();
     $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
     $usuario_id = $_SESSION['usuario_id'] ?? null;
     

@@ -24,7 +24,7 @@ $lugares_regional = [2, 4, 6, 8, 10, 12, 14, 16, 18];
 // Definir cantidades de personal por lugar
 $cantidades_personal = [
     1 => 1, 2 => 1, 3 => 1, 4 => 1, 5 => 1, 6 => 1, 7 => 1, 8 => 1,
-    9 => 4, 10 => 4, 11 => 1, 12 => 1, 13 => 1, 14 => 1, 15 => 1, 16 => 1,
+    9 => 5, 10 => 5, 11 => 1, 12 => 1, 13 => 1, 14 => 1, 15 => 1, 16 => 1,
     17 => 3, 18 => 3
 ];
 
@@ -32,6 +32,7 @@ $cantidades_personal = [
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fecha_guardia = $_POST['fecha_guardia'] ?? '';
     $orden_dia = $_POST['orden_dia'] ?? '';
+    $feriado = isset($_POST['feriado']) && $_POST['feriado'] == '1';
     
     if (empty($fecha_guardia) || empty($orden_dia)) {
         $error = 'Debe completar todos los campos obligatorios';
@@ -58,8 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $es_central = in_array($dia_semana, [7, 1, 2, 3, 4]); // Domingo(7) a Jueves(4)
             $lugares_activos = $es_central ? $lugares_central : $lugares_regional;
             
-            // Deshabilitar ID 7 y 8 los domingos
-            if ($dia_semana == 7) { // Domingo
+            // Deshabilitar ID 7 y 8 los domingos o feriados
+            if ($dia_semana == 7 || $feriado) { // Domingo o Feriado
                 $lugares_activos = array_diff($lugares_activos, [7, 8]);
             }
             
@@ -67,15 +68,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $policias_por_lugar = [];
             
             // Para cada lugar activo, obtener los policías ordenados por posición FIFO
+            // Si es domingo o feriado, priorizar aquellos con observación "GRUPO DOMINGO"
             foreach ($lugares_activos as $lugar_id) {
-                $query = "SELECT p.id, p.legajo, p.nombre, p.apellido, p.lugar_guardia_id, lg.posicion, 
-                         lguar.nombre as nombre_lugar
-                         FROM policias p 
-                         INNER JOIN lista_guardias lg ON p.id = lg.policia_id 
-                         LEFT JOIN lugares_guardias lguar ON p.lugar_guardia_id = lguar.id
-                         WHERE p.activo = 1 AND p.estado = 'DISPONIBLE' 
-                         AND p.lugar_guardia_id = :lugar_id
-                         ORDER BY lg.posicion ASC";
+                if ($dia_semana == 7 || $feriado) { // Es domingo o feriado
+                    $query = "SELECT p.id, p.legajo, p.nombre, p.apellido, p.lugar_guardia_id, lg.posicion, 
+                             lguar.nombre as nombre_lugar, p.observaciones
+                             FROM policias p 
+                             INNER JOIN lista_guardias lg ON p.id = lg.policia_id 
+                             LEFT JOIN lugares_guardias lguar ON p.lugar_guardia_id = lguar.id
+                             WHERE p.activo = 1 AND p.estado = 'DISPONIBLE' 
+                             AND p.lugar_guardia_id = :lugar_id
+                             ORDER BY 
+                                CASE WHEN p.observaciones LIKE '%GRUPO DOMINGO%' THEN 0 ELSE 1 END,
+                                lg.posicion ASC";
+                } else {
+                    $query = "SELECT p.id, p.legajo, p.nombre, p.apellido, p.lugar_guardia_id, lg.posicion, 
+                             lguar.nombre as nombre_lugar, p.observaciones
+                             FROM policias p 
+                             INNER JOIN lista_guardias lg ON p.id = lg.policia_id 
+                             LEFT JOIN lugares_guardias lguar ON p.lugar_guardia_id = lguar.id
+                             WHERE p.activo = 1 AND p.estado = 'DISPONIBLE' 
+                             AND p.lugar_guardia_id = :lugar_id
+                             ORDER BY lg.posicion ASC";
+                }
                 $stmt = $conn->prepare($query);
                 $stmt->bindParam(':lugar_id', $lugar_id, PDO::PARAM_INT);
                 $stmt->execute();
@@ -109,7 +124,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'fecha_guardia' => $fecha_guardia,
                 'orden_dia' => $orden_dia,
                 'asignaciones' => $asignaciones,
-                'zona' => $es_central ? 'CENTRAL' : 'REGIONAL'
+                'zona' => $es_central ? 'CENTRAL' : 'REGIONAL',
+                'feriado' => $feriado ? 1 : 0
             ];
             
             header('Location: confirmar_guardia.php');
@@ -403,6 +419,15 @@ try {
                                                        value="<?php echo date('Y-m-d'); ?>" required>
                                                 <div class="form-text text-muted">Seleccione la fecha para la asignación</div>
                                             </div>
+
+                                            <!-- Feriado toggle -->
+                                            <div class="form-check form-switch mb-3">
+                                                <input class="form-check-input" type="checkbox" id="feriado" name="feriado" value="1">
+                                                <label class="form-check-label" for="feriado">
+                                                    <i class="fas fa-umbrella-beach text-warning me-1"></i>
+                                                    Feriado (tratar como domingo, sin telefonista exclusivo)
+                                                </label>
+                                            </div>
                                             
                                             <!-- Número de Orden del Día -->
                                             <div class="mb-3">
@@ -675,8 +700,6 @@ try {
                 alert(mensaje);
                 return;
             }
-            
-            // Validar formato número/año
             const regex = /^\d+\/\d{4}$/;
             if (!regex.test(ordenValue)) {
                 e.preventDefault();
@@ -689,6 +712,7 @@ try {
         document.getElementById('fecha_guardia').addEventListener('change', function() {
             const fecha = new Date(this.value);
             const diaSemana = fecha.getDay(); // 0=Domingo, 1=Lunes, ..., 6=Sábado
+            const esFeriado = document.getElementById('feriado')?.checked;
             
             let zona = '';
             if (diaSemana === 0 || diaSemana >= 1 && diaSemana <= 4) { // Domingo a Jueves
@@ -702,11 +726,33 @@ try {
             if (infoDiv) {
                 infoDiv.innerHTML = `<strong>Día seleccionado:</strong> ${fecha.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}<br>
                                    <strong>Zona:</strong> ${zona}<br>
-                                   <strong>Lugares activos:</strong> ${zona === 'CENTRAL' ? '1,3,5,7,9,11,13,15,17' : '2,4,6,8,10,12,14,16,18'}${diaSemana === 0 ? ' (IDs 7-8 deshabilitados)' : ''}`;
+                                   <strong>Lugares activos:</strong> ${zona === 'CENTRAL' ? '1,3,5,7,9,11,13,15,17' : '2,4,6,8,10,12,14,16,18'}${(diaSemana === 0 || esFeriado) ? ' (IDs 7-8 deshabilitados)' : ''}`;
             }
             
             // Verificar duplicados completos (ambos campos si están disponibles)
             verificarDuplicado();
+        });
+
+        // Actualizar info al togglear feriado
+        document.getElementById('feriado').addEventListener('change', function() {
+            const inputFecha = document.getElementById('fecha_guardia');
+            const fecha = inputFecha.value ? new Date(inputFecha.value) : new Date();
+            const diaSemana = fecha.getDay();
+            const esFeriado = this.checked;
+
+            let zona = '';
+            if (diaSemana === 0 || diaSemana >= 1 && diaSemana <= 4) { // Domingo a Jueves
+                zona = 'CENTRAL';
+            } else { // Viernes y Sábado
+                zona = 'REGIONAL';
+            }
+
+            const infoDiv = document.querySelector('.alert-info');
+            if (infoDiv) {
+                infoDiv.innerHTML = `<strong>Día seleccionado:</strong> ${fecha.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}<br>
+                                   <strong>Zona:</strong> ${zona}<br>
+                                   <strong>Lugares activos:</strong> ${zona === 'CENTRAL' ? '1,3,5,7,9,11,13,15,17' : '2,4,6,8,10,12,14,16,18'}${(diaSemana === 0 || esFeriado) ? ' (IDs 7-8 deshabilitados)' : ''}`;
+            }
         });
         
         // Verificar duplicados cuando cambie el orden del día

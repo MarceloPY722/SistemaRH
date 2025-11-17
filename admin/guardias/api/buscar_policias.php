@@ -50,10 +50,7 @@ try {
                 THEN lg.fecha_disponible
                 ELSE NULL
             END as proxima_fecha_disponible,
-            (SELECT MAX(gr.fecha_inicio)
-                FROM guardias_realizadas gr 
-                WHERE gr.policia_id = p.id
-            ) as ultima_guardia_realizada,
+            NULL as ultima_guardia_realizada, -- Tabla guardias_realizadas eliminada
             (SELECT a.fecha_fin 
                 FROM ausencias a 
                 WHERE a.policia_id = p.id 

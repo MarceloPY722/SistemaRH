@@ -16,6 +16,18 @@ $tipos_grados = $conn->query("SELECT tg.*, g.nombre as categoria_nombre FROM tip
 $especialidades = $conn->query("SELECT * FROM especialidades ORDER BY nombre ASC");
 $regiones = $conn->query("SELECT * FROM regiones ORDER BY nombre ASC");
 $lugares_guardias = $conn->query("SELECT * FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
+// Lista deduplicada solo para filtro de Guardia
+$lugares_guardias_filtro = $conn->query("SELECT TRIM(nombre) AS nombre FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
+// Construir lista única normalizando espacios para evitar clones
+$guardias_nombres = [];
+$guardias_set = [];
+foreach ($lugares_guardias_filtro->fetchAll(PDO::FETCH_COLUMN, 0) as $nombre) {
+    $normalized = strtolower(preg_replace('/\s+/', ' ', trim($nombre)));
+    if (!isset($guardias_set[$normalized])) {
+        $guardias_set[$normalized] = true;
+        $guardias_nombres[] = trim($nombre);
+    }
+}
 
 // Procesar formulario de nuevo policía
 if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
@@ -65,7 +77,6 @@ $policias = $conn->query("
         body {
             background-color: #f8f9fa;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            font-size: 13px;
         }
         .navbar {
             background: linear-gradient(45deg, #104c75, #0d3d5c) !important;
@@ -99,7 +110,6 @@ $policias = $conn->query("
             font-size: 1.5rem;
         }
         .table {
-            font-size: 12px;
             margin-bottom: 0;
         }
         .table th {
@@ -107,7 +117,6 @@ $policias = $conn->query("
             color: white;
             border: none;
             padding: 8px 6px;
-            font-size: 11px;
             white-space: nowrap;
         }
         .table td {
@@ -257,11 +266,10 @@ $policias = $conn->query("
                                 <label class="form-label mb-1" style="font-size: 11px;">Guardia:</label>
                                 <select class="form-select form-select-sm" id="filtroLugarGuardia" style="min-width: 120px; height: 30px; font-size: 11px;">
                                     <option value="">Todos</option>
-                                    <?php 
-                                    while ($lugar = $lugares_guardias->fetch()): 
-                                    ?>
-                                    <option value="<?php echo htmlspecialchars($lugar['nombre']); ?>"><?php echo htmlspecialchars($lugar['nombre']); ?></option>
-                                    <?php endwhile; ?>
+                                    <option value="sin_asignar">Sin asignar</option>
+                                    <?php foreach ($guardias_nombres as $nombre_guardia): ?>
+                                        <option value="<?php echo htmlspecialchars($nombre_guardia); ?>"><?php echo htmlspecialchars($nombre_guardia); ?></option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                             <div class="filter-group">
@@ -273,28 +281,6 @@ $policias = $conn->query("
                                     ?>
                                     <option value="<?php echo htmlspecialchars($region['nombre']); ?>"><?php echo htmlspecialchars($region['nombre']); ?></option>
                                     <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <div class="filter-group">
-                                <label class="form-label mb-1" style="font-size: 11px;">Categoría:</label>
-                                <select class="form-select form-select-sm" id="filtroCategoria" style="min-width: 120px; height: 30px; font-size: 11px;">
-                                    <option value="">Todas</option>
-                                    <?php 
-                                    while ($categoria = $categorias_grados->fetch()): 
-                                    ?>
-                                    <option value="<?php echo htmlspecialchars($categoria['categoria_nombre']); ?>"><?php echo htmlspecialchars($categoria['categoria_nombre']); ?></option>
-                                    <?php endwhile; ?>
-                                </select>
-                            </div>
-                            <div class="filter-group">
-                                <label class="form-label mb-1" style="font-size: 11px;">Tipo:</label>
-                                <select class="form-select form-select-sm" id="filtroTipoGrado" style="min-width: 120px; height: 30px; font-size: 11px;">
-                                    <option value="">Todos</option>
-                                    <?php 
-                                    while ($tipo = $tipos_grados->fetch()): 
-                                    ?>
-                                    <option value="<?php echo htmlspecialchars($tipo['nombre']); ?>"><?php echo htmlspecialchars($tipo['categoria_nombre'] . ' - ' . $tipo['nombre']); ?></option>
-                                    <?php endwhile; ?>
                                 </select>
                             </div>
                             <div class="filter-group">
@@ -314,7 +300,7 @@ $policias = $conn->query("
                             <div id="searchInfo" class="search-results-info" style="display: none;"></div>
                             
                             <div class="table-responsive">
-                                <table class="table table-striped table-sm" id="policiasTable">
+                                <table class="table table-striped" id="policiasTable">
                                     <thead>
                                         <tr>
                                             <th style="width: 8%;">Legajo</th>
@@ -329,7 +315,12 @@ $policias = $conn->query("
                                     </thead>
                                     <tbody id="policiasTableBody">
                                         <?php while ($policia = $policias->fetch()): ?>
-                                        <tr class="policia-row" data-search="<?php echo strtolower($policia['legajo'] . ' ' . $policia['cin'] . ' ' . $policia['nombre'] . ' ' . $policia['apellido'] . ' ' . $policia['grado_nombre'] . ' ' . $policia['categoria_nombre'] . ' ' . $policia['telefono'] . ' ' . ($policia['lugar_guardia_nombre'] ?: '') . ' ' . $policia['region_nombre']); ?>">
+                                        <tr class="policia-row"
+                                             data-search="<?php echo strtolower($policia['legajo'] . ' ' . $policia['cin'] . ' ' . $policia['nombre'] . ' ' . $policia['apellido'] . ' ' . $policia['grado_nombre'] . ' ' . $policia['categoria_nombre'] . ' ' . $policia['telefono'] . ' ' . ($policia['lugar_guardia_nombre'] ?: '') . ' ' . $policia['region_nombre']); ?>"
+                                             data-region="<?php echo htmlspecialchars(trim($policia['region_nombre'] ?? '')); ?>"
+                                             data-categoria="<?php echo htmlspecialchars(trim($policia['categoria_nombre'] ?? '')); ?>"
+                                             data-tipo="<?php echo htmlspecialchars(trim($policia['grado_nombre'] ?? '')); ?>"
+                                             data-guardia="<?php echo $policia['lugar_guardia_nombre'] ? htmlspecialchars(trim($policia['lugar_guardia_nombre'])) : 'sin_asignar'; ?>">
                                             <td class="searchable" style="font-size: 11px;"><?php echo $policia['legajo']; ?></td>
                                             <td class="searchable" style="font-size: 11px;"><?php echo $policia['cin']; ?></td>
                                             <td class="searchable" style="font-size: 11px;" title="<?php echo $policia['apellido'] . ', ' . $policia['nombre']; ?>">
@@ -508,8 +499,6 @@ $policias = $conn->query("
         document.addEventListener('DOMContentLoaded', function() {
             // Event listeners para los filtros
             document.getElementById('filtroRegion').addEventListener('change', aplicarFiltros);
-            document.getElementById('filtroCategoria').addEventListener('change', aplicarFiltros);
-            document.getElementById('filtroTipoGrado').addEventListener('change', aplicarFiltros);
             document.getElementById('filtroLugarGuardia').addEventListener('change', aplicarFiltros);
             document.getElementById('limpiarFiltros').addEventListener('click', limpiarFiltros);
             
@@ -536,17 +525,23 @@ $policias = $conn->query("
         
         // Función para aplicar filtros
         function aplicarFiltros() {
-            const textoBusqueda = document.getElementById('buscarPersonal').value.toLowerCase();
-            const regionSeleccionada = document.getElementById('filtroRegion').value.toLowerCase();
-            const categoriaSeleccionada = document.getElementById('filtroCategoria').value.toLowerCase();
-            const tipoGradoSeleccionado = document.getElementById('filtroTipoGrado').value.toLowerCase();
-            const lugarGuardiaSeleccionado = document.getElementById('filtroLugarGuardia').value.toLowerCase();
+            const normalizar = (str) => (str || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLowerCase();
+            const textoBusqueda = normalizar(document.getElementById('buscarPersonal').value);
+            const regionSeleccionada = normalizar(document.getElementById('filtroRegion').value);
+            const lugarGuardiaSeleccionado = normalizar(document.getElementById('filtroLugarGuardia').value);
             
             const filas = document.querySelectorAll('.policia-row');
             let filasVisibles = 0;
             
             filas.forEach(function(fila) {
-                const datosCompletos = fila.getAttribute('data-search');
+                const datosCompletos = normalizar(fila.getAttribute('data-search'));
+                const rowRegion = normalizar(fila.dataset.region || '');
+                const rowGuardia = normalizar(fila.dataset.guardia || '');
                 let mostrar = true;
                 
                 // Filtro por texto de búsqueda
@@ -554,24 +549,22 @@ $policias = $conn->query("
                     mostrar = false;
                 }
                 
-                // Filtro por región
-                if (regionSeleccionada && !datosCompletos.includes(regionSeleccionada)) {
+                // Filtro por región (coincidencia exacta)
+                if (regionSeleccionada && rowRegion !== regionSeleccionada) {
                     mostrar = false;
                 }
                 
-                // Filtro por categoría
-                if (categoriaSeleccionada && !datosCompletos.includes(categoriaSeleccionada)) {
-                    mostrar = false;
-                }
+                // Filtros de Categoría y Tipo eliminados
                 
-                // Filtro por tipo de grado específico
-                if (tipoGradoSeleccionado && !datosCompletos.includes(tipoGradoSeleccionado)) {
-                    mostrar = false;
-                }
-                
-                // Filtro por lugar de guardia
-                if (lugarGuardiaSeleccionado && !datosCompletos.includes(lugarGuardiaSeleccionado)) {
-                    mostrar = false;
+                // Filtro por lugar de guardia (coincidencia exacta y caso sin asignar)
+                if (lugarGuardiaSeleccionado) {
+                    if (lugarGuardiaSeleccionado === 'sin_asignar') {
+                        if (rowGuardia !== 'sin_asignar') {
+                            mostrar = false;
+                        }
+                    } else if (rowGuardia !== lugarGuardiaSeleccionado) {
+                        mostrar = false;
+                    }
                 }
                 
                 if (mostrar) {
@@ -601,8 +594,6 @@ $policias = $conn->query("
             
             if (textoBusqueda || 
                 document.getElementById('filtroRegion').value ||
-                document.getElementById('filtroCategoria').value ||
-                document.getElementById('filtroTipoGrado').value ||
                 document.getElementById('filtroLugarGuardia').value) {
                 
                 searchInfo.style.display = 'block';
@@ -620,8 +611,6 @@ $policias = $conn->query("
         function limpiarFiltros() {
             document.getElementById('buscarPersonal').value = '';
             document.getElementById('filtroRegion').value = '';
-            document.getElementById('filtroCategoria').value = '';
-            document.getElementById('filtroTipoGrado').value = '';
             document.getElementById('filtroLugarGuardia').value = '';
             document.getElementById('limpiarBusqueda').style.display = 'none';
             

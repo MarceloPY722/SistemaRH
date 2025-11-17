@@ -54,13 +54,7 @@ if ($total_servicios > 0) {
     $dependencias[] = "$total_servicios asignación(es) de servicio";
 }
 
-// Verificar guardias realizadas
-$guardias = $conn->prepare("SELECT COUNT(*) as total FROM guardias_realizadas WHERE policia_id = ?");
-$guardias->execute([$policia_id]);
-$total_guardias = $guardias->fetch()['total'];
-if ($total_guardias > 0) {
-    $dependencias[] = "$total_guardias guardia(s) realizada(s)";
-}
+// Guardias realizadas - tabla eliminada, ya no se verifica
 
 // Verificar lista de guardias
 $lista_guardias = $conn->prepare("SELECT COUNT(*) as total FROM lista_guardias WHERE policia_id = ?");

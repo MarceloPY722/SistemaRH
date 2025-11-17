@@ -30,6 +30,12 @@ function obtenerSiguienteLegajo($conn) {
 }
 
 $siguiente_legajo = obtenerSiguienteLegajo($conn);
+// Obtener el último legajo usado para mostrar referencia en el formulario
+$ultimo_legajo_usado = null;
+$stmtMaxLegajo = $conn->query("SELECT MAX(legajo) AS max_legajo FROM policias");
+if ($stmtMaxLegajo && ($rowMax = $stmtMaxLegajo->fetch())) {
+    $ultimo_legajo_usado = $rowMax['max_legajo'];
+}
 $grados = $conn->query("SELECT tg.*, g.nombre as categoria_nombre FROM tipo_grados tg JOIN grados g ON tg.grado_id = g.id ORDER BY g.nivel_jerarquia ASC, tg.nivel_jerarquia ASC");
 $especialidades = $conn->query("SELECT * FROM especialidades ORDER BY nombre ASC");
 $regiones = $conn->query("SELECT * FROM regiones ORDER BY nombre ASC");
@@ -89,11 +95,32 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                      
                      if ($stmt->execute([$legajo, $nombre, $apellido, $cin, $genero, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region_id, $lugar_guardia_id, $observaciones])) {
                          $policia_id = $conn->lastInsertId();
+                         if (function_exists('auditoriaCrear')) {
+                             auditoriaCrear('policias', $policia_id, [
+                                 'legajo' => $legajo,
+                                 'nombre' => $nombre,
+                                 'apellido' => $apellido,
+                                 'cin' => $cin,
+                                 'genero' => $genero,
+                                 'grado_id' => $grado_id,
+                                 'especialidad_id' => $especialidad_id,
+                                 'cargo' => $cargo,
+                                 'comisionamiento' => $comisionamiento,
+                                 'telefono' => $telefono,
+                                 'region_id' => $region_id,
+                                 'lugar_guardia_id' => $lugar_guardia_id
+                             ]);
+                         }
                          
                          // Insertar en lista_guardias
                          $sql_lista = "INSERT INTO lista_guardias (policia_id, posicion) SELECT ?, COALESCE(MAX(posicion), 0) + 1 FROM lista_guardias WHERE policia_id IN (SELECT id FROM policias WHERE lugar_guardia_id = ?)";
                          $stmt_lista = $conn->prepare($sql_lista);
                          $stmt_lista->execute([$policia_id, $lugar_guardia_id]);
+                         if (function_exists('registrarAuditoria')) {
+                             registrarAuditoria('Ingreso a lista_guardias por nuevo policía', 'lista_guardias', $policia_id, null, [
+                                 'lugar_guardia_id' => $lugar_guardia_id
+                             ]);
+                         }
                          
                          $creados++;
                      } else {
@@ -174,11 +201,32 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                          
                          if ($stmt->execute([$legajo, $nombre, $apellido, $cin, $genero, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region_id, $lugar_guardia_id, $observaciones])) {
                              $policia_id = $conn->lastInsertId();
+                             if (function_exists('auditoriaCrear')) {
+                                 auditoriaCrear('policias', $policia_id, [
+                                     'legajo' => $legajo,
+                                     'nombre' => $nombre,
+                                     'apellido' => $apellido,
+                                     'cin' => $cin,
+                                     'genero' => $genero,
+                                     'grado_id' => $grado_id,
+                                     'especialidad_id' => $especialidad_id,
+                                     'cargo' => $cargo,
+                                     'comisionamiento' => $comisionamiento,
+                                     'telefono' => $telefono,
+                                     'region_id' => $region_id,
+                                     'lugar_guardia_id' => $lugar_guardia_id
+                                 ]);
+                             }
                              
                              // Insertar en lista_guardias
                              $sql_lista = "INSERT INTO lista_guardias (policia_id, posicion) SELECT ?, COALESCE(MAX(posicion), 0) + 1 FROM lista_guardias WHERE policia_id IN (SELECT id FROM policias WHERE lugar_guardia_id = ?)";
                              $stmt_lista = $conn->prepare($sql_lista);
                              $stmt_lista->execute([$policia_id, $lugar_guardia_id]);
+                             if (function_exists('registrarAuditoria')) {
+                                 registrarAuditoria('Ingreso a lista_guardias por nuevo policía', 'lista_guardias', $policia_id, null, [
+                                     'lugar_guardia_id' => $lugar_guardia_id
+                                 ]);
+                             }
                              
                              $creados++;
                              $creados_lugar++;
@@ -246,6 +294,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         
         if ($stmt->execute([$legajo, $nombre, $apellido, $cin, $genero, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region_id, $lugar_guardia_id, $observaciones])) {
             $mensaje = "<div class='alert alert-success'>Policía registrado exitosamente con legajo: $legajo</div>";
+            if (function_exists('auditoriaCrear')) {
+                $policia_id = $conn->lastInsertId();
+                auditoriaCrear('policias', $policia_id, [
+                    'legajo' => $legajo,
+                    'nombre' => $nombre,
+                    'apellido' => $apellido,
+                    'cin' => $cin,
+                    'genero' => $genero,
+                    'grado_id' => $grado_id,
+                    'especialidad_id' => $especialidad_id,
+                    'cargo' => $cargo,
+                    'comisionamiento' => $comisionamiento,
+                    'telefono' => $telefono,
+                    'region_id' => $region_id,
+                    'lugar_guardia_id' => $lugar_guardia_id
+                ]);
+            }
             $_POST = array(); 
             // Actualizar el siguiente legajo para el próximo registro
             $siguiente_legajo = obtenerSiguienteLegajo($conn);
@@ -329,7 +394,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                                     <div class="col-md-3 mb-3">
                                         <label for="legajo" class="form-label">Legajo</label>
                                         <input type="number" class="form-control" id="legajo" name="legajo" value="<?php echo $siguiente_legajo; ?>" readonly>
-                                        <small class="text-muted">Se asigna automáticamente</small>
+                                        <small class="text-muted">Se asigna automáticamente<?php if (!is_null($ultimo_legajo_usado)) { echo " (Último usado: " . htmlspecialchars($ultimo_legajo_usado) . ", Próximo: " . htmlspecialchars($siguiente_legajo) . ")"; } ?></small>
                                     </div>
                                     <div class="col-md-3 mb-3">
                                         <label for="nombre" class="form-label required-field">Nombre</label>
@@ -358,14 +423,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                                         <select class="form-select" id="grado_id" name="grado_id" required>
                                             <option value="">Seleccionar grado...</option>
                                             <?php 
-                                            if ($grados->rowCount() > 0) {
-                                                while ($grado = $grados->fetch()): 
+                                            if (!empty($grados_data)) {
+                                                foreach ($grados_data as $grado): 
                                             ?>
                                             <option value="<?php echo $grado['id']; ?>" <?php echo (isset($_POST['grado_id']) && $_POST['grado_id'] == $grado['id']) ? 'selected' : ''; ?>>
                                                 <?php echo htmlspecialchars($grado['categoria_nombre'] . ' - ' . $grado['nombre']); ?>
                                             </option>
                                             <?php 
-                                                endwhile;
+                                                endforeach;
                                             }
                                             ?>
                                         </select>
@@ -375,12 +440,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                                         <select class="form-select" id="especialidad_id" name="especialidad_id">
                                             <option value="">Seleccionar especialidad...</option>
                                             <?php 
-                                            if ($especialidades->rowCount() > 0) {
-                                                while ($especialidad = $especialidades->fetch()): 
+                                            if (!empty($especialidades_data)) {
+                                                foreach ($especialidades_data as $especialidad): 
                                             ?>
                                             <option value="<?php echo $especialidad['id']; ?>" <?php echo (isset($_POST['especialidad_id']) && $_POST['especialidad_id'] == $especialidad['id']) ? 'selected' : ''; ?>><?php echo htmlspecialchars($especialidad['nombre']); ?></option>
                                             <?php 
-                                                endwhile;
+                                                endforeach;
                                             }
                                             ?>
                                         </select>
@@ -423,12 +488,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                                         <select class="form-select" id="lugar_guardia_id" name="lugar_guardia_id">
                                             <option value="">Seleccionar lugar principal...</option>
                                             <?php 
-                                            if ($lugares_guardias->rowCount() > 0) {
-                                                while ($lugar = $lugares_guardias->fetch()): 
+                                            if (!empty($lugares_guardias_data)) {
+                                                foreach ($lugares_guardias_data as $lugar): 
                                             ?>
                                             <option value="<?php echo $lugar['id']; ?>" <?php echo (isset($_POST['lugar_guardia_id']) && $_POST['lugar_guardia_id'] == $lugar['id']) ? 'selected' : ''; ?>><?php echo htmlspecialchars($lugar['nombre']); ?></option>
                                             <?php 
-                                                endwhile;
+                                                endforeach;
                                             }
                                             ?>
                                         </select>

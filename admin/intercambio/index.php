@@ -28,10 +28,27 @@ if ($_POST && isset($_POST['action'])) {
         $stmt_update->bind_param("iii", $nuevo_principal, $nuevo_reserva, $policia_id);
         
         if ($stmt_update->execute()) {
+            if (function_exists('auditoriaActualizar')) {
+                auditoriaActualizar('policias', $policia_id, [
+                    'lugar_guardia_id' => $policia['lugar_guardia_id'],
+                    'lugar_guardia_reserva_id' => $policia['lugar_guardia_reserva_id']
+                ], [
+                    'lugar_guardia_id' => $nuevo_principal,
+                    'lugar_guardia_reserva_id' => $nuevo_reserva
+                ]);
+            }
             // Registrar el intercambio
             $stmt_log = $conn->prepare("INSERT INTO intercambios_guardias (policia_id, ausencia_id, lugar_original_id, lugar_intercambio_id, fecha_intercambio, usuario_id) VALUES (?, ?, ?, ?, NOW(), ?)");
             $stmt_log->bind_param("iiiii", $policia_id, $ausencia_id, $nuevo_reserva, $nuevo_principal, $_SESSION['usuario_id']);
             $stmt_log->execute();
+            if (function_exists('auditoriaCrear')) {
+                auditoriaCrear('intercambios_guardias', null, [
+                    'policia_id' => $policia_id,
+                    'ausencia_id' => $ausencia_id,
+                    'lugar_original_id' => $nuevo_reserva,
+                    'lugar_intercambio_id' => $nuevo_principal
+                ]);
+            }
             
             // Marcar al policía como disponible en su nuevo lugar de guardia
             try {
@@ -51,6 +68,9 @@ if ($_POST && isset($_POST['action'])) {
                     $stmt_add_lista = $conn->prepare("INSERT INTO lista_guardias (policia_id, posicion) SELECT ?, COALESCE(MAX(posicion), 0) + 1 FROM lista_guardias");
                     $stmt_add_lista->bind_param("i", $policia_id);
                     $stmt_add_lista->execute();
+                    if (function_exists('auditoriaCrear')) {
+                        auditoriaCrear('lista_guardias', null, [ 'policia_id' => $policia_id, 'accion' => 'Alta por intercambio' ]);
+                    }
                 }
             }
             
@@ -69,6 +89,9 @@ if ($_POST && isset($_POST['action'])) {
         $stmt->bind_param("i", $ausencia_id);
         
         if ($stmt->execute()) {
+            if (function_exists('auditoriaActualizar')) {
+                auditoriaActualizar('ausencias', $ausencia_id, null, [ 'estado' => 'COMPLETADA' ]);
+            }
             // Restaurar lugar de guardia original si hay intercambio activo
             $stmt_check = $conn->prepare("SELECT lugar_original_id, lugar_intercambio_id FROM intercambios_guardias WHERE policia_id = ? AND ausencia_id = ? AND activo = 1");
             $stmt_check->bind_param("ii", $policia_id, $ausencia_id);
@@ -80,11 +103,23 @@ if ($_POST && isset($_POST['action'])) {
                 $stmt_restore = $conn->prepare("UPDATE policias SET lugar_guardia_id = ?, lugar_guardia_reserva_id = ? WHERE id = ?");
                 $stmt_restore->bind_param("iii", $intercambio['lugar_original_id'], $intercambio['lugar_intercambio_id'], $policia_id);
                 $stmt_restore->execute();
+                if (function_exists('auditoriaActualizar')) {
+                    auditoriaActualizar('policias', $policia_id, [
+                        'lugar_guardia_id' => $intercambio['lugar_intercambio_id'],
+                        'lugar_guardia_reserva_id' => $intercambio['lugar_original_id']
+                    ], [
+                        'lugar_guardia_id' => $intercambio['lugar_original_id'],
+                        'lugar_guardia_reserva_id' => $intercambio['lugar_intercambio_id']
+                    ]);
+                }
                 
                 // Marcar intercambio como inactivo
                 $stmt_deactivate = $conn->prepare("UPDATE intercambios_guardias SET activo = 0, fecha_restauracion = NOW() WHERE policia_id = ? AND ausencia_id = ?");
                 $stmt_deactivate->bind_param("ii", $policia_id, $ausencia_id);
                 $stmt_deactivate->execute();
+                if (function_exists('auditoriaActualizar')) {
+                    auditoriaActualizar('intercambios_guardias', null, [ 'activo' => 1 ], [ 'activo' => 0, 'fecha_restauracion' => date('Y-m-d H:i:s') ]);
+                }
             }
             
             $mensaje = "<div class='alert alert-success'>Ausencia completada y lugar de guardia restaurado</div>";

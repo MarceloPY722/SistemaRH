@@ -25,8 +25,17 @@ if ($_POST && isset($_POST['action'])) {
         } else {
             // Actualizar el legajo
             $update_stmt = $conn->prepare("UPDATE policias SET legajo = ? WHERE id = ?");
+            // Datos anteriores para auditoría
+            $stmt_prev = $conn->prepare("SELECT id, legajo FROM policias WHERE id = ?");
+            $stmt_prev->execute([$policia_id]);
+            $prev_data = $stmt_prev->fetch(PDO::FETCH_ASSOC);
             
             if ($update_stmt->execute([$nuevo_legajo, $policia_id])) {
+                if (function_exists('auditoriaActualizar')) {
+                    auditoriaActualizar('policias', $policia_id, $prev_data ?: null, [
+                        'legajo' => $nuevo_legajo
+                    ]);
+                }
                 $mensaje = "<div class='alert alert-success'>Legajo actualizado exitosamente.</div>";
             } else {
                 $mensaje = "<div class='alert alert-danger'>Error al actualizar el legajo.</div>";
@@ -64,6 +73,10 @@ if ($_POST && isset($_POST['action'])) {
                     $update2->execute([$legajos[$policia2_id], $policia1_id]);
                     
                     $conn->commit();
+                    if (function_exists('auditoriaActualizar')) {
+                        auditoriaActualizar('policias', $policia1_id, [ 'legajo' => $legajos[$policia1_id] ], [ 'legajo' => $legajos[$policia2_id] ]);
+                        auditoriaActualizar('policias', $policia2_id, [ 'legajo' => $legajos[$policia2_id] ], [ 'legajo' => $legajos[$policia1_id] ]);
+                    }
                     $mensaje = "<div class='alert alert-success'>Legajos intercambiados exitosamente. El policía 1 ahora tiene el legajo {$legajos[$policia2_id]} y el policía 2 tiene el legajo {$legajos[$policia1_id]}.</div>";
                 } catch (Exception $e) {
                     $conn->rollback();

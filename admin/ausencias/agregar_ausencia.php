@@ -79,6 +79,15 @@ if ($_POST) {
     
     if ($stmt->execute([$policia_id, $tipo_ausencia_id, $fecha_inicio, $fecha_fin, $descripcion, $justificacion, $documento_path])) {
         $ausencia_id = $conn->lastInsertId();
+        if (function_exists('auditoriaCrear')) {
+            auditoriaCrear('ausencias', $ausencia_id, [
+                'policia_id' => $policia_id,
+                'tipo_ausencia_id' => $tipo_ausencia_id,
+                'fecha_inicio' => $fecha_inicio,
+                'fecha_fin' => $fecha_fin,
+                'estado' => 'APROBADA'
+            ]);
+        }
         
         // Si es Junta Médica, registrar en orden_junta_medica_telefonista
         $sql_tipo = "SELECT nombre FROM tipos_ausencias WHERE id = ?";
@@ -111,7 +120,16 @@ if ($_POST) {
             $stmt_intercambio = $conn->prepare("UPDATE policias SET lugar_guardia_id = ?, lugar_guardia_reserva_id = ? WHERE id = ?");
             
             if ($stmt_intercambio->execute([$nuevo_principal, $nuevo_reserva, $policia_id])) {
-       
+                if (function_exists('auditoriaActualizar')) {
+                    $stmt_prev = $conn->prepare("SELECT * FROM policias WHERE id = ?");
+                    $stmt_prev->execute([$policia_id]);
+                    $policia_prev = $stmt_prev->fetch(PDO::FETCH_ASSOC);
+                    auditoriaActualizar('policias', $policia_id, $policia_prev ?: null, [
+                        'lugar_guardia_id' => $nuevo_principal,
+                        'lugar_guardia_reserva_id' => $nuevo_reserva
+                    ]);
+                }
+                
                 $conn->exec("CREATE TABLE IF NOT EXISTS intercambios_guardias (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     policia_id INT NOT NULL,
@@ -128,6 +146,14 @@ if ($_POST) {
                 // Registrar el intercambio
                 $stmt_log = $conn->prepare("INSERT INTO intercambios_guardias (policia_id, ausencia_id, lugar_original_id, lugar_intercambio_id, fecha_intercambio, usuario_id) VALUES (?, ?, ?, ?, NOW(), ?)");
                 $stmt_log->execute([$policia_id, $ausencia_id, $nuevo_reserva, $nuevo_principal, $_SESSION['usuario_id']]);
+                if (function_exists('registrarAuditoria')) {
+                    registrarAuditoria('Intercambio de guardia por Junta Médica', 'intercambios_guardias', $conn->lastInsertId(), null, [
+                        'policia_id' => $policia_id,
+                        'ausencia_id' => $ausencia_id,
+                        'lugar_original_id' => $nuevo_reserva,
+                        'lugar_intercambio_id' => $nuevo_principal
+                    ]);
+                }
                 
                 // Marcar al policía como disponible en su nuevo lugar de guardia
                 try {
@@ -152,9 +178,17 @@ if ($_POST) {
             $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle me-2'></i><strong>Ya se agregó la ausencia permanente por Junta Médica.</strong><br>El lugar de guardia del policía ha sido cambiado automáticamente a <strong>ATENCIÓN TELEFÓNICA EXCLUSIVA</strong>.</div>";
         } else {
             // Para ausencias que no son Junta Médica, cambiar estado a NO DISPONIBLE
+            $stmt_prev = $conn->prepare("SELECT * FROM policias WHERE id = ?");
+            $stmt_prev->execute([$policia_id]);
+            $policia_prev = $stmt_prev->fetch(PDO::FETCH_ASSOC);
             $sql_update_estado = "UPDATE policias SET estado = 'NO DISPONIBLE' WHERE id = ?";
             $stmt_update_estado = $conn->prepare($sql_update_estado);
             $stmt_update_estado->execute([$policia_id]);
+            if (function_exists('auditoriaActualizar')) {
+                auditoriaActualizar('policias', $policia_id, $policia_prev ?: null, [
+                    'estado' => 'NO DISPONIBLE'
+                ]);
+            }
             
             $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle me-2'></i>Ausencia registrada exitosamente. El estado del policía ha sido cambiado a <strong>NO DISPONIBLE</strong>.</div>";
         }

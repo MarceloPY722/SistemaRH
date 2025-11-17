@@ -1,480 +1,497 @@
 <?php
 session_start();
 
+// Verificar si el usuario está logueado
 if (!isset($_SESSION['usuario_id'])) {
-    header("Location: ../../index.php");
+    header("Location: ../index.php");
     exit();
 }
 
 require_once '../../cnx/db_connect.php';
-require_once '../../lib/fpdf/fpdf.php';
+require_once '../inc/header.php';
 
-// Parámetros
-$fecha_orden = $_GET['fecha_orden'] ?? date('Y-m-d');
-$fecha_guardia = $_GET['fecha_guardia'] ?? '';
-$numero_orden = $_GET['numero_orden'] ?? '';
-$generar_pdf = isset($_GET['generar_pdf']);
+$fecha = isset($_GET['fecha']) ? $_GET['fecha'] : date('Y-m-d');
 
-$guardias_data = [];
-$lugares_guardias = [];
+$stmt = $conn->prepare("
+    SELECT 
+        g.id,
+        g.fecha,
+        g.hora_inicio,
+        g.hora_fin,
+        g.asistio,
+        g.observaciones,
+        p.nombre_apellido as policía,
+        p.legajo,
+        p.dni,
+        gr.nombre as grado,
+        esp.nombre as especialidad,
+        lg.nombre as lugar_guardia,
+        z.nombre as zona,
+        r.nombre as region
+    FROM guardias g
+    JOIN policias p ON g.policia_id = p.id
+    LEFT JOIN grados gr ON p.grado_id = gr.id
+    LEFT JOIN especialidades esp ON p.especialidad_id = esp.id
+    JOIN lugares_guardia lg ON g.lugar_guardia_id = lg.id
+    JOIN zonas z ON lg.zona_id = z.id
+    JOIN regiones r ON z.region_id = r.id
+    WHERE g.fecha = ?
+    ORDER BY g.hora_inicio, p.nombre_apellido
+");
 
-// Obtener lugares de guardias
-$lugares_result = $conn->query("SELECT id, nombre FROM lugares_guardias ORDER BY nombre");
-while ($lugar = $lugares_result->fetch_assoc()) {
-    $lugares_guardias[] = $lugar;
-}
+$stmt->execute([$fecha]);
+$guardias = $stmt->fetchAll();
 
-// Si se especificó fecha de guardia, obtener el personal
-if ($fecha_guardia) {
-    $sql = "
-        SELECT 
-            gr.fecha_inicio,
-            gr.fecha_fin,
-            CONCAT(p.nombre, ' ', p.apellido) as policia,
-            p.telefono,
-            g.abreviatura as grado_abrev,
-            g.nombre as grado,
-            p.comisionamiento,
-            lg.nombre as lugar_guardia,
-            gr.puesto,
-            gr.observaciones
-        FROM guardias_realizadas gr
-        JOIN policias p ON gr.policia_id = p.id
-        JOIN grados g ON p.grado_id = g.id
-        JOIN lugares_guardias lg ON gr.lugar_guardia_id = lg.id
-        WHERE DATE(gr.fecha_inicio) = ?
-        ORDER BY 
-            CASE 
-                WHEN gr.puesto LIKE '%JEFE DE SERVICIO%' THEN 1
-                WHEN gr.puesto LIKE '%JEFE DE CUARTEL%' THEN 2
-                WHEN gr.puesto LIKE '%OFICIAL DE GUARDIA%' THEN 3
-                WHEN gr.puesto LIKE '%TELEFON%' THEN 4
-                WHEN gr.puesto LIKE '%CONDUCTOR%' THEN 5
-                WHEN gr.puesto LIKE '%SANIDAD%' THEN 6
-                ELSE 7
-            END,
-            g.nivel_jerarquia ASC,
-            p.apellido ASC
-    ";
-    
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("s", $fecha_guardia);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    while ($row = $result->fetch_assoc()) {
-        $guardias_data[] = $row;
-    }
-}
+$stats = $conn->prepare("
+    SELECT 
+        COUNT(*) as total_guardias,
+        SUM(CASE WHEN asistio = 1 THEN 1 ELSE 0 END) as asistieron,
+        SUM(CASE WHEN asistio = 0 THEN 1 ELSE 0 END) as faltaron,
+        COUNT(DISTINCT lugar_guardia_id) as lugares_cubiertos
+    FROM guardias 
+    WHERE fecha = ?
+");
+$stats->execute([$fecha]);
+$estadisticas = $stats->fetch();
 
-// Función helper para formatear fechas en español
-function formatearFechaEspanol($fecha) {
-    $meses = [
-        1 => 'enero', 2 => 'febrero', 3 => 'marzo', 4 => 'abril',
-        5 => 'mayo', 6 => 'junio', 7 => 'julio', 8 => 'agosto',
-        9 => 'septiembre', 10 => 'octubre', 11 => 'noviembre', 12 => 'diciembre'
-    ];
-    $dias = [
-        'Monday' => 'lunes', 'Tuesday' => 'martes', 'Wednesday' => 'miércoles',
-        'Thursday' => 'jueves', 'Friday' => 'viernes', 'Saturday' => 'sábado', 'Sunday' => 'domingo'
-    ];
-    
-    $fecha_dt = new DateTime($fecha);
-    $dia_semana = $dias[$fecha_dt->format('l')];
-    $dia = $fecha_dt->format('d');
-    $mes = $meses[(int)$fecha_dt->format('n')];
-    $año = $fecha_dt->format('Y');
-    
-    return [$dia_semana, $dia, $mes, $año];
-}
-
-// Función mejorada para convertir texto UTF-8 para FPDF
-function convertirTextoParaPDF($texto) {
-    if (empty($texto)) {
-        return '';
-    }
-    
-    // Usar mb_convert_encoding como primera opción
-    if (function_exists('mb_convert_encoding')) {
-        return mb_convert_encoding($texto, 'ISO-8859-1', 'UTF-8');
-    }
-    
-    // Intentar conversión con iconv
-    if (function_exists('iconv')) {
-        $resultado = @iconv('UTF-8', 'ISO-8859-1//IGNORE', $texto);
-        if ($resultado !== false) {
-            return $resultado;
-        }
-    }
-    
-    // Fallback manual - remover acentos
-    $caracteres = [
-        'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u',
-        'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U',
-        'ñ' => 'n', 'Ñ' => 'N', 'ü' => 'u', 'Ü' => 'U',
-        '°' => 'o'
-    ];
-    
-    return strtr($texto, $caracteres);
-}
-
-/**
- * Imprime una línea de personal con formato:
- * TITULO: Grado NOMBRE (Comisionamiento)..........(Telefono)
- */
-function imprimirLineaPersonal($pdf, $titulo, $grado, $nombre, $comisionamiento, $telefono, $extra_info = '') {
-    $pageWidth = $pdf->GetPageWidth();
-    $margin = 20;
-    
-    // Título del puesto en negrita seguido de dos puntos
-    $pdf->SetFont('Arial', 'B', 10);
-    if (!empty($titulo)) {
-        $pdf->Cell($pdf->GetStringWidth($titulo . ': '), 6, convertirTextoParaPDF($titulo . ': '));
-    }
-    
-    // Resto del texto en normal
-    $pdf->SetFont('Arial', '', 10);
-    // Solo mostrar grado, nombre y comisionamiento
-    $linea_izquierda = convertirTextoParaPDF(strtoupper("$grado $nombre")) . " " . convertirTextoParaPDF("($comisionamiento)");
-    $pdf->Cell($pdf->GetStringWidth($linea_izquierda), 6, $linea_izquierda);
-
-    // Teléfono alineado a la derecha con puntos
-    if ($telefono) {
-        $telefono_formateado = convertirTextoParaPDF("($telefono)");
-        $ancho_telefono = $pdf->GetStringWidth($telefono_formateado);
-        $pos_actual_x = $pdf->GetX();
-        $pos_telefono_x = $pageWidth - $margin - $ancho_telefono;
-
-        // Dibujar los puntos
-        $pdf->SetX($pos_actual_x);
-        for ($i = $pos_actual_x; $i < $pos_telefono_x - 1; $i += $pdf->GetStringWidth('.')) {
-            $pdf->Cell($pdf->GetStringWidth('.'), 6, '.');
-        }
-
-        $pdf->SetX($pos_telefono_x);
-        $pdf->Cell($ancho_telefono, 6, $telefono_formateado);
-    }
-    
-    $pdf->Ln(6);
-}
-
-// Función principal para generar el documento PDF (Versión Corregida)
-function generarDocumentoPDF($fecha_orden, $fecha_guardia, $numero_orden, $guardias_data) {
-    $pdf = new FPDF('P', 'mm', 'A4');
-    $pdf->AddPage();
-    $pdf->SetMargins(20, 15, 20);
-    $pdf->SetAutoPageBreak(true, 25);
-
-    // --- ENCABEZADO ---
-    $pdf->SetFont('Arial', '', 10);
-    list(,, $mes_orden,) = formatearFechaEspanol($fecha_orden);
-    $fecha_dt_orden = new DateTime($fecha_orden);
-    $fecha_formateada = "Asunción, " . $fecha_dt_orden->format('d') . " de " . ucfirst($mes_orden) . " de " . $fecha_dt_orden->format('Y') . ".-";
-    $pdf->Cell(0, 5, convertirTextoParaPDF($fecha_formateada), 0, 1, 'R');
-    $pdf->Ln(5);
-
-    $pdf->SetFont('Arial', 'B', 11);
-    $pdf->Cell(0, 6, 'SEDE CENTRAL', 0, 1, 'C');
-    $pdf->Ln(5);
-
-    $pdf->Cell(0, 6, convertirTextoParaPDF("ORDEN DEL DÍA Nº $numero_orden/2025"), 0, 1, 'C');
-    $pdf->Ln(5);
-
-    // --- DESCRIPCIÓN ---
-    $pdf->SetFont('Arial', '', 10);
-    list($dia_semana, $dia, $mes, $año) = formatearFechaEspanol($fecha_guardia);
-    $fecha_guardia_formateada = strtoupper("$dia_semana $dia DE $mes DE $año");
-    
-    $fecha_siguiente_dt = new DateTime($fecha_guardia);
-    $fecha_siguiente_dt->modify('+1 day');
-    list($dia_semana_sig, $dia_sig, $mes_sig, $año_sig) = formatearFechaEspanol($fecha_siguiente_dt->format('Y-m-d'));
-    $fecha_siguiente_formateada = strtoupper("$dia_semana_sig $dia_sig DE $mes_sig DE $año_sig");
-
-    $descripcion = "POR LA QUE SE DESIGNA PERSONAL DE GUARDIA Y PERSONAL PARA CUMPLIR FUNCIONES ADMINISTRATIVAS (TELEFONISTA) PARA EL DÍA $fecha_guardia_formateada DESDE LAS 07:00 HS. HASTA EL DÍA $fecha_siguiente_formateada; 07:00 HS. A LOS SIGUIENTES :";
-    $pdf->MultiCell(0, 5, convertirTextoParaPDF($descripcion), 0, 'J');
-    $pdf->Ln(8);
-
-    // --- PERSONAL DE GUARDIA (agrupado) ---
-    $grupos_impresos = [];
-
-    foreach ($guardias_data as $guardia) {
-        $puesto_original = strtoupper($guardia['puesto'] ?? '');
-        $grado = $guardia['grado_abrev'] ?: $guardia['grado'];
-        $nombre = $guardia['policia'] ?? '';
-        $comisionamiento = $guardia['comisionamiento'] ?? '';
-        $telefono = $guardia['telefono'] ?? '';
-        $observaciones = $guardia['observaciones'] ?? '';
-
-        // Lógica para imprimir encabezados de grupo
-        if (strpos($puesto_original, 'TELEFON') !== false && !in_array('ATENCIÓN TELEFÓNICA EXCLUSIVA', $grupos_impresos)) {
-            $pdf->Ln(4);
-            $pdf->SetFont('Arial', 'B', 10);
-            $pdf->Cell(0, 6, convertirTextoParaPDF('ATENCIÓN TELEFÓNICA EXCLUSIVA (DE 06:00 HORAS A 18:00 HORAS)'), 0, 1);
-            $grupos_impresos[] = 'ATENCIÓN TELEFÓNICA EXCLUSIVA';
-        } elseif (strpos($puesto_original, 'NUMERO DE GUARDIA') !== false && !in_array('NUMERO DE GUARDIA', $grupos_impresos)) {
-            $pdf->Ln(4);
-            $pdf->SetFont('Arial', 'B', 10);
-            $pdf->Cell(0, 6, convertirTextoParaPDF('NUMERO DE GUARDIA'), 0, 1);
-            $grupos_impresos[] = 'NUMERO DE GUARDIA';
-        }
-
-        $titulo_puesto = $puesto_original;
-        
-        // Simplificamos el título del puesto para la línea
-        $titulo_puesto = str_replace(" (DE 06:00 HORAS A 18:00 HORAS)","",$puesto_original);
-
-        imprimirLineaPersonal($pdf, $titulo_puesto, $grado, $nombre, $comisionamiento, $telefono, $observaciones);
-    }
-
-    // --- INSTRUCCIONES FINALES ---
-    $pdf->Ln(8);
-    $pdf->SetFont('Arial', '', 10);
-    $pdf->MultiCell(0, 5, convertirTextoParaPDF('FORMACIÓN GUARDIA ENTRANTE 06:30 HS.-'), 0, 'J');
-    $pdf->MultiCell(0, 5, convertirTextoParaPDF('JEFE DE SERVICIO : UNIFORME DE SERVICIO "B" , BIRRETE Y ARMA REGLAMENTARIA.-'), 0, 'J');
-    $pdf->MultiCell(0, 5, convertirTextoParaPDF('JEFE DE CUARTEL Y DEMAS COMPONENTES DE LA GUARDIA: CON UNIFORME DE SERVICIO "C" Y TODOS LOS ACCESORIOS (ARMA REGLAMENTARIA, PORTANOMBRE, PLACA, BOLÍGRAFO Y AGENDA.-'), 0, 'J');
-    $pdf->MultiCell(0, 5, convertirTextoParaPDF('EL JEFE DE SERVICIO Y JEFE DE CUARTEL, SON RESPONSABLES DIRECTO ANTE EL JEFE DEL DEPARTAMENTO, DEL CONTROL, DISTRIBUCIÓN Y VERIFICACIÓN EN FORMA PERMANENTE DE LA GUARDIA.-'), 0, 'J');
-    $pdf->MultiCell(0, 5, convertirTextoParaPDF('EL JEFE DE SERVICIO DESIGNARÁ UN PERSONAL DE LA GUARDIA, QUIEN SERÁ EL ENCARGADO DEL CONTROL DE LA LLAVE DE LA DIVISIÓN DE ARCHIVOS DE LA SEDE CENTRAL DEL DEPARTAMENTO Y ASENTARA EN EL LIBRO DE LA GUARDIA.-'), 0, 'J');
-    $pdf->MultiCell(0, 5, convertirTextoParaPDF('PROHIBIR EL INGRESO A PERSONAS AJENAS AL DEPARTAMENTO DE IDENTIFICACIONES FUERA DEL HORARIO DE ATENCIÓN AL PÚBLICO, SALVO CASO DEBIDAMENTE JUSTIFICADA Y AUTORIZADA POR EL JEFE DE SERVICIO, LA CUAL DEBERÁ SER ASENTADA EN EL LIBRO DE NOVEDADES DE LA OFICINA DE GUARDIA.-'), 0, 'J');
-    $pdf->Ln(8);
-
-    // --- CIERRE Y FIRMA ---
-    $pdf->SetFont('Arial', '', 10);
-    $pdf->Cell(0, 6, 'CUMPLIDO ARCHIVAR.', 0, 1, 'C');
-    $pdf->Ln(15);
-    
-    $pdf->Cell(0, 6, 'V.Bº', 0, 1, 'L');
-    $pdf->Ln(15);
-
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->Cell(0, 6, convertirTextoParaPDF('SILVIA ACOSTA DE GIMENEZ'), 0, 1, 'C');
-    $pdf->SetFont('Arial', '', 10);
-    $pdf->Cell(0, 6, convertirTextoParaPDF('Comisario MGAP.'), 0, 1, 'C');
-    $pdf->Cell(0, 6, convertirTextoParaPDF('Jefa División RR.HH. - Dpto. de Identificaciones'), 0, 1, 'C');
-
-    return $pdf;
-}
-
-// Generar y descargar documento PDF
-if ($generar_pdf && $fecha_guardia && $numero_orden) {
-    // Limpiar cualquier salida previa
-    ob_clean();
-    
-    $pdf = generarDocumentoPDF($fecha_orden, $fecha_guardia, $numero_orden, $guardias_data);
-    
-    $filename = "Orden_del_Dia_" . str_replace('-', '_', $fecha_guardia) . "_" . $numero_orden . ".pdf";
-    
-    header('Content-Type: application/pdf');
-    header('Content-Disposition: attachment;filename="' . $filename . '"');
-    header('Cache-Control: max-age=0');
-    
-    $pdf->Output('D', $filename);
-    exit;
-}
+$lugares_sin_cubrir = $conn->prepare("
+    SELECT lg.nombre, z.nombre as zona, r.nombre as region
+    FROM lugares_guardia lg
+    JOIN zonas z ON lg.zona_id = z.id
+    JOIN regiones r ON z.region_id = r.id
+    WHERE lg.id NOT IN (
+        SELECT DISTINCT lugar_guardia_id 
+        FROM guardias 
+        WHERE fecha = ?
+    )
+    ORDER BY r.nombre, z.nombre, lg.nombre
+");
+$lugares_sin_cubrir->execute([$fecha]);
+$lugares_vacios = $lugares_sin_cubrir->fetchAll();
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orden del Día - Sistema RH</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <title>Orden del Día - <?php echo date('d/m/Y', strtotime($fecha)); ?></title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
+        :root {
+            --primary-color: #104c75;
+            --secondary-color: #1a6a9c;
+            --accent-color: #ff6b6b;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --info-color: #17a2b8;
+        }
+
         body {
             background-color: #f8f9fa;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        .navbar {
-            background: linear-gradient(45deg, #104c75, #0d3d5c) !important;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .card {
-            border: none;
+
+        .orden-dia-header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            color: white;
+            padding: 2rem;
             border-radius: 15px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
         }
-        .preview-document {
+
+        .orden-dia-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .orden-dia-subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            margin-bottom: 0;
+        }
+
+        .stats-card {
             background: white;
-            padding: 40px;
-            margin: 20px 0;
-            border: 1px solid #ddd;
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            border: none;
+            transition: transform 0.2s ease-in-out;
         }
-        .document-header {
-            text-align: center;
-            margin-bottom: 30px;
+
+        .stats-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
         }
-        .document-title {
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0;
+        }
+
+        .guardia-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            border: none;
+            margin-bottom: 1rem;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .guardia-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .guardia-header {
+            background: linear-gradient(135deg, var(--info-color) 0%, #138496 100%);
+            color: white;
+            padding: 1rem 1.5rem;
+            font-weight: 600;
+        }
+
+        .guardia-body {
+            padding: 1.5rem;
+        }
+
+        .policia-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .policia-avatar {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
             font-weight: bold;
-            font-size: 14px;
-            margin: 10px 0;
         }
-        .personal-line {
-            margin: 8px 0;
-            font-size: 12px;
+
+        .policia-details h5 {
+            margin-bottom: 0.25rem;
+            color: var(--primary-color);
+            font-weight: 600;
         }
-        .instrucciones {
-            margin-top: 30px;
-            font-size: 11px;
+
+        .policia-details p {
+            margin-bottom: 0.25rem;
+            color: #6c757d;
+            font-size: 0.9rem;
         }
-        .firma {
-            text-align: center;
-            margin-top: 40px;
+
+        .guardia-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
         }
+
+        .detail-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .detail-item i {
+            color: var(--primary-color);
+            width: 20px;
+        }
+
+        .asistio-badge {
+            font-size: 0.8rem;
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .badge-success-custom {
+            background: linear-gradient(135deg, var(--success-color) 0%, #218838 100%);
+            color: white;
+        }
+
+        .badge-danger-custom {
+            background: linear-gradient(135deg, var(--accent-color) 0%, #dc3545 100%);
+            color: white;
+        }
+
+        .lugares-vacios {
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+            border: 1px solid #ffc107;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .lugares-vacios h5 {
+            color: #856404;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .lugar-vacio-item {
+            background: rgba(255, 255, 255, 0.7);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            border-left: 4px solid #ffc107;
+        }
+
+        .btn-custom {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            border: none;
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .btn-custom:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            color: white;
+        }
+
+        .date-selector {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            margin-bottom: 2rem;
+        }
+
         @media print {
-            .no-print { display: none !important; }
-            .preview-document { 
-                box-shadow: none; 
-                border: none;
-                margin: 0;
-                padding: 20px;
+            .no-print {
+                display: none !important;
+            }
+            
+            .guardia-card {
+                break-inside: avoid;
+                box-shadow: none;
+                border: 1px solid #dee2e6;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container-fluid">
-        <div class="row">
-            <?php include '../inc/sidebar.php'; ?>
-            
-            <div class="col-md-9 col-lg-10">
-                <div class="main-content p-4">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h1 class="h3 text-primary">
-                            <i class="fas fa-file-pdf"></i> Orden del Día
-                        </h1>
-                        <a href="index.php" class="btn btn-outline-secondary no-print">
-                            <i class="fas fa-arrow-left"></i> Volver a Reportes
+    <?php require_once '../inc/sidebar.php'; ?>
+    
+    <div class="content-wrapper">
+        <div class="container-fluid p-4">
+            <!-- Selector de Fecha -->
+            <div class="date-selector no-print">
+                <div class="row align-items-center">
+                    <div class="col-md-4">
+                        <label for="fechaSelector" class="form-label fw-bold">
+                            <i class="fas fa-calendar me-2"></i>Seleccionar Fecha:
+                        </label>
+                        <input type="date" class="form-control" id="fechaSelector" value="<?php echo $fecha; ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-custom mt-4" onclick="actualizarFecha()">
+                            <i class="fas fa-search me-2"></i>Actualizar
+                        </button>
+                        <button class="btn btn-outline-secondary mt-4 ms-2" onclick="window.print()">
+                            <i class="fas fa-print me-2"></i>Imprimir
+                        </button>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <a href="index.php" class="btn btn-outline-primary mt-4">
+                            <i class="fas fa-chart-line me-2"></i>Ver Reportes
                         </a>
                     </div>
+                </div>
+            </div>
 
-                    <!-- Formulario de configuración -->
-                    <div class="card mb-4 no-print">
-                        <div class="card-header">
-                            <h5 class="mb-0"><i class="fas fa-cog"></i> Configuración de la Orden</h5>
-                        </div>
-                        <div class="card-body">
-                            <form method="GET" class="row g-3">
-                                <div class="col-md-4">
-                                    <label for="fecha_orden" class="form-label">Fecha de la Orden</label>
-                                    <input type="date" class="form-control" id="fecha_orden" name="fecha_orden" 
-                                           value="<?= htmlspecialchars($fecha_orden) ?>" required>
-                                </div>
-                                <div class="col-md-4">
-                                    <label for="fecha_guardia" class="form-label">Fecha de Guardia</label>
-                                    <input type="date" class="form-control" id="fecha_guardia" name="fecha_guardia" 
-                                           value="<?= htmlspecialchars($fecha_guardia) ?>" required>
-                                </div>
-                                <div class="col-md-4">
-                                    <label for="numero_orden" class="form-label">Número de Orden</label>
-                                    <input type="text" class="form-control" id="numero_orden" name="numero_orden" 
-                                           value="<?= htmlspecialchars($numero_orden) ?>" placeholder="Ej: 322" required>
-                                </div>
-                                <div class="col-12">
-                                    <button type="submit" class="btn btn-primary me-2">
-                                        <i class="fas fa-search"></i> Generar Vista Previa
-                                    </button>
-                                    <?php if ($fecha_guardia && $numero_orden): ?>
-                                    <a href="?fecha_orden=<?= urlencode($fecha_orden) ?>&fecha_guardia=<?= urlencode($fecha_guardia) ?>&numero_orden=<?= urlencode($numero_orden) ?>&generar_pdf=1" 
-                                       class="btn btn-success">
-                                        <i class="fas fa-download"></i> Descargar PDF
-                                    </a>
-                                    <button type="button" onclick="window.print()" class="btn btn-info">
-                                        <i class="fas fa-print"></i> Imprimir
-                                    </button>
-                                    <?php endif; ?>
-                                </div>
-                            </form>
+            <!-- Encabezado del Orden del Día -->
+            <div class="orden-dia-header">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h1 class="orden-dia-title">
+                            <i class="fas fa-clipboard-list me-3"></i>Orden del Día
+                        </h1>
+                        <p class="orden-dia-subtitle">
+                            <i class="fas fa-calendar-day me-2"></i><?php echo date('d/m/Y', strtotime($fecha)); ?>
+                            <span class="ms-4">
+                                <i class="fas fa-clock me-2"></i><?php echo date('H:i'); ?> hs
+                            </span>
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <div class="orden-dia-logo">
+                            <i class="fas fa-shield-alt" style="font-size: 4rem; opacity: 0.3;"></i>
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    <?php if ($fecha_guardia && $numero_orden): ?>
-                    <!-- Vista previa del documento -->
-                    <div class="card">
-                        <div class="card-header no-print">
-                            <h5 class="mb-0"><i class="fas fa-eye"></i> Vista Previa del Documento</h5>
-                        </div>
-                        <div class="card-body p-0">
-                            <div class="preview-document">
-                                <div class="document-header">
-                                    <?php 
-                                    list($dia_semana_orden, $dia_orden, $mes_orden, $año_orden) = formatearFechaEspanol($fecha_orden);
-                                    $fecha_formateada = $dia_orden . ' de ' . $mes_orden . ' de ' . $año_orden;
-                                    ?>
-                                    <div>Asunción, <?= $fecha_formateada ?>.-</div>
-                                    <div class="document-title">SEDE CENTRAL</div>
-                                    <br>
-                                    <div class="document-title">ORDEN DEL DÍA Nº <?= htmlspecialchars($numero_orden) ?>/2025</div>
-                                    <br>
-                                    <?php 
-                                    list($dia_semana, $dia, $mes, $año) = formatearFechaEspanol($fecha_guardia);
-                                    $fecha_guardia_formateada = ucfirst($dia_semana) . ' ' . $dia . ' de ' . $mes . ' de ' . $año;
-                                    
-                                    $fecha_siguiente = date('Y-m-d', strtotime($fecha_guardia . ' +1 day'));
-                                    list($dia_semana_sig, $dia_sig, $mes_sig, $año_sig) = formatearFechaEspanol($fecha_siguiente);
-                                    $fecha_siguiente_formateada = ucfirst($dia_semana_sig) . ' ' . $dia_sig . ' de ' . $mes_sig . ' de ' . $año_sig;
-                                    ?>
-                                    <div style="text-align: justify; margin: 20px 0;">
-                                        POR LA QUE SE DESIGNA PERSONAL DE GUARDIA Y PERSONAL PARA CUMPLIR FUNCIONES ADMINISTRATIVAS (TELEFONISTA) 
-                                        PARA EL DÍA <?= strtoupper($fecha_guardia_formateada) ?> DESDE LAS 07:00 HS. HASTA EL DÍA 
-                                        <?= strtoupper($fecha_siguiente_formateada) ?>; 07:00 HS. A LOS SIGUIENTES :
+            <!-- Estadísticas Generales -->
+            <div class="row mb-4">
+                <div class="col-md-3 mb-3">
+                    <div class="stats-card text-center">
+                        <div class="stat-number text-primary"><?php echo $estadisticas['total_guardias']; ?></div>
+                        <div class="stat-label">Total Guardias</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="stats-card text-center">
+                        <div class="stat-number text-success"><?php echo $estadisticas['asistieron']; ?></div>
+                        <div class="stat-label">Asistieron</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="stats-card text-center">
+                        <div class="stat-number text-danger"><?php echo $estadisticas['faltaron']; ?></div>
+                        <div class="stat-label">Faltaron</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="stats-card text-center">
+                        <div class="stat-number text-info"><?php echo $estadisticas['lugares_cubiertos']; ?></div>
+                        <div class="stat-label">Lugares Cubiertos</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Guardias del Día -->
+            <div class="mb-4">
+                <h3 class="mb-4 text-primary">
+                    <i class="fas fa-users me-2"></i>Guardias Asignadas
+                </h3>
+
+                <?php if (count($guardias) > 0): ?>
+                    <?php foreach ($guardias as $guardia): ?>
+                        <div class="guardia-card">
+                            <div class="guardia-header">
+                                <div class="row align-items-center">
+                                    <div class="col-md-6">
+                                        <i class="fas fa-map-marker-alt me-2"></i>
+                                        <strong><?php echo htmlspecialchars($guardia['lugar_guardia']); ?></strong>
+                                        <small class="ms-2">(<?php echo htmlspecialchars($guardia['zona']); ?>)</small>
                                     </div>
-                                </div>
-
-                                <?php if (!empty($guardias_data)): ?>
-                                <div style="margin: 30px 0;">
-                                    <?php foreach ($guardias_data as $guardia): ?>
-                                    <div class="personal-line">
-                                        <?php 
-                                        $grado = $guardia['grado_abrev'] ?: $guardia['grado'];
-                                        $nombre = $guardia['policia'];
-                                        $comisionamiento = $guardia['comisionamiento'];
-                                        $telefono = $guardia['telefono'];
-                                        $puesto = strtoupper($guardia['puesto']);
-                                        ?>
-                                        <strong><?= htmlspecialchars($puesto) ?>:</strong> 
-                                        <?= htmlspecialchars(strtoupper($grado . ' ' . $nombre)) ?> 
-                                        (<?= htmlspecialchars($comisionamiento) ?>)
-                                        <?php if ($telefono): ?>
-                                        ..............................(<?= htmlspecialchars($telefono) ?>)
+                                    <div class="col-md-6 text-end">
+                                        <i class="fas fa-clock me-2"></i>
+                                        <?php echo htmlspecialchars($guardia['hora_inicio']); ?> - <?php echo htmlspecialchars($guardia['hora_fin']); ?> hs
+                                        <?php if ($guardia['asistio'] == 1): ?>
+                                            <span class="asistio-badge badge-success-custom ms-2">ASISTIÓ</span>
+                                        <?php else: ?>
+                                            <span class="asistio-badge badge-danger-custom ms-2">NO ASISTIÓ</span>
                                         <?php endif; ?>
                                     </div>
-                                    <?php endforeach; ?>
-                                </div>
-                                <?php else: ?>
-                                <div class="alert alert-warning">
-                                    No se encontraron guardias para la fecha seleccionada.
-                                </div>
-                                <?php endif; ?>
-
-                                <div class="instrucciones">
-                                    <p>FORMACIÓN GUARDIA ENTRANTE 06:30 HS.-</p>
-                                    <p>JEFE DE SERVICIO : UNIFORME DE SERVICIO "B" , BIRRETE Y ARMA REGLAMENTARIA.-</p>
-                                    <p>JEFE DE CUARTEL Y DEMAS COMPONENTES DE LA GUARDIA: CON UNIFORME DE SERVICIO "C" Y TODOS LOS ACCESORIOS (ARMA REGLAMENTARIA, PORTANOMBRE, PLACA, BOLÍGRAFO Y AGENDA.-</p>
-                                    <p>EL JEFE DE SERVICIO Y JEFE DE CUARTEL, SON RESPONSABLES DIRECTO ANTE EL JEFE DEL DEPARTAMENTO, DEL CONTROL, DISTRIBUCIÓN Y VERIFICACIÓN EN FORMA PERMANENTE DE LA GUARDIA.-</p>
-                                    <p>EL JEFE DE SERVICIO DESIGNARÁ UN PERSONAL DE LA GUARDIA, QUIEN SERÁ EL ENCARGADO DEL CONTROL DE LA LLAVE DE LA DIVISIÓN DE ARCHIVOS DE LA SEDE CENTRAL DEL DEPARTAMENTO Y ASENTARA EN EL LIBRO DE LA GUARDIA.-</p>
-                                    <p>PROHIBIR EL INGRESO A PERSONAS AJENAS AL DEPARTAMENTO DE IDENTIFICACIONES FUERA DEL HORARIO DE ATENCIÓN AL PÚBLICO, SALVO CASO DEBIDAMENTE JUSTIFICADA Y AUTORIZADA POR EL JEFE DE SERVICIO, LA CUAL DEBERÁ SER ASENTADA EN EL LIBRO DE NOVEDADES DE LA OFICINA DE GUARDIA.-</p>
-                                </div>
-
-                                <div class="firma">
-                                    <p>CUMPLIDO ARCHIVAR.</p>
-                                    <br><br>
-                                    <p>V.Bº</p>
-                                    <br><br><br>
-                                    <p><strong>SILVIA ACOSTA DE GIMENEZ</strong></p>
-                                    <p>Comisario MGAP.</p>
-                                    <p>Jefa División RR.HH. - Dpto. de Identificaciones</p>
                                 </div>
                             </div>
+                            <div class="guardia-body">
+                                <div class="policia-info">
+                                    <div class="policia-avatar">
+                                        <?php echo strtoupper(substr($guardia['policía'], 0, 1)); ?>
+                                    </div>
+                                    <div class="policia-details">
+                                        <h5><?php echo htmlspecialchars($guardia['policía']); ?></h5>
+                                        <p><i class="fas fa-id-card me-2"></i>DNI: <?php echo htmlspecialchars($guardia['dni']); ?></p>
+                                        <p><i class="fas fa-hashtag me-2"></i>Legajo: <?php echo htmlspecialchars($guardia['legajo']); ?></p>
+                                    </div>
+                                </div>
+                                <div class="guardia-details">
+                                    <div class="detail-item">
+                                        <i class="fas fa-star"></i>
+                                        <span><strong>Grado:</strong> <?php echo htmlspecialchars($guardia['grado'] ?? 'No especificado'); ?></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <i class="fas fa-cogs"></i>
+                                        <span><strong>Especialidad:</strong> <?php echo htmlspecialchars($guardia['especialidad'] ?? 'No especificada'); ?></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <i class="fas fa-map-marked-alt"></i>
+                                        <span><strong>Región:</strong> <?php echo htmlspecialchars($guardia['region']); ?></span>
+                                    </div>
+                                </div>
+                                <?php if (!empty($guardia['observaciones'])): ?>
+                                    <div class="mt-3 p-3 bg-light rounded">
+                                        <small class="text-muted">
+                                            <i class="fas fa-comment me-2"></i>
+                                            <strong>Observaciones:</strong> <?php echo htmlspecialchars($guardia['observaciones']); ?>
+                                        </small>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
                         </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        No hay guardias asignadas para esta fecha.
                     </div>
-                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+
+            <!-- Lugares sin Cubrir -->
+            <?php if (count($lugares_vacios) > 0): ?>
+                <div class="lugares-vacios">
+                    <h5><i class="fas fa-exclamation-triangle me-2"></i>Lugares sin Cubrir</h5>
+                    <div class="row">
+                        <?php foreach ($lugares_vacios as $lugar): ?>
+                            <div class="col-md-4">
+                                <div class="lugar-vacio-item">
+                                    <strong><?php echo htmlspecialchars($lugar['nombre']); ?></strong><br>
+                                    <small class="text-muted">
+                                        <?php echo htmlspecialchars($lugar['zona']); ?> - <?php echo htmlspecialchars($lugar['region']); ?>
+                                    </small>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
+            <?php endif; ?>
+
+            <!-- Pie de página -->
+            <div class="mt-5 text-center text-muted">
+                <hr>
+                <small>
+                    <i class="fas fa-file-alt me-2"></i>
+                    Orden del Día generado por Sistema RH - <?php echo date('d/m/Y H:i'); ?> hs
+                </small>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function actualizarFecha() {
+            const fecha = document.getElementById('fechaSelector').value;
+            if (fecha) {
+                window.location.href = `orden_dia.php?fecha=${fecha}`;
+            }
+        }
+
+        // Enter key support for date selector
+        document.getElementById('fechaSelector').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                actualizarFecha();
+            }
+        });
+
+        // Auto-update on date change
+        document.getElementById('fechaSelector').addEventListener('change', function() {
+            actualizarFecha();
+        });
+    </script>
 </body>
 </html>

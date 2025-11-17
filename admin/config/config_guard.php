@@ -19,29 +19,11 @@ $mensaje = '';
 // Procesar eliminación de guardias
 if ($_POST && isset($_POST['action'])) {
     if ($_POST['action'] == 'eliminar_todas') {
-        // Eliminar guardias semanales
-        $sql1 = "DELETE FROM guardias_semanales";
-        // Eliminar guardias realizadas
-        $sql2 = "DELETE FROM guardias_realizadas";
-        
-        $success1 = $conn->query($sql1);
-        $success2 = $conn->query($sql2);
-        
-        if ($success1 && $success2) {
-            $mensaje = "<div class='alert alert-success'>Todas las guardias semanales y realizadas han sido eliminadas exitosamente.</div>";
-        } else {
-            $mensaje = "<div class='alert alert-danger'>Error al eliminar las guardias.</div>";
-        }
+        // Tabla guardias_realizadas eliminada - no se puede eliminar
+        $mensaje = "<div class='alert alert-warning'>La tabla guardias_realizadas ya no existe en el sistema.</div>";
     } elseif ($_POST['action'] == 'eliminar_guardias_realizadas') {
-        // Nueva opción: eliminar solo guardias realizadas
-        $sql = "DELETE FROM guardias_realizadas";
-        $stmt = $conn->prepare($sql);
-        if ($stmt->execute()) {
-            $affected_rows = $stmt->rowCount();
-            $mensaje = "<div class='alert alert-success'>Se eliminaron $affected_rows guardias realizadas exitosamente.</div>";
-        } else {
-            $mensaje = "<div class='alert alert-danger'>Error al eliminar las guardias realizadas.</div>";
-        }
+        // Tabla guardias_realizadas eliminada - no se puede eliminar
+        $mensaje = "<div class='alert alert-warning'>La tabla guardias_realizadas ya no existe en el sistema.</div>";
     } elseif ($_POST['action'] == 'eliminar_por_fecha') {
         $fecha_inicio = $_POST['fecha_inicio'];
         $fecha_fin = $_POST['fecha_fin'];
@@ -180,18 +162,15 @@ $fecha_actual = date('Y-m-d');
                                 </div>
                                 
                                 <div class="col-md-3">
-                                    <div class="card border-warning">
-                                        <div class="card-header bg-warning text-dark">
-                                            <h5><i class="fas fa-broom"></i> Limpiar Guardias Realizadas</h5>
+                                    <div class="card border-secondary">
+                                        <div class="card-header bg-secondary text-white">
+                                            <h5><i class="fas fa-ban"></i> Funcionalidad Deshabilitada</h5>
                                         </div>
                                         <div class="card-body">
-                                            <p>Elimina todas las guardias realizadas.</p>
-                                            <form method="POST" onsubmit="return confirm('¿Está seguro de eliminar TODAS las guardias realizadas? Esta acción no se puede deshacer.')">
-                                                <input type="hidden" name="action" value="eliminar_guardias_realizadas">
-                                                <button type="submit" class="btn btn-warning">
-                                                    <i class="fas fa-broom"></i> Limpiar Guardias Realizadas
-                                                </button>
-                                            </form>
+                                            <p>La tabla guardias_realizadas ha sido eliminada del sistema.</p>
+                                            <button type="button" class="btn btn-secondary" disabled>
+                                                <i class="fas fa-ban"></i> No Disponible
+                                            </button>
                                         </div>
                                     </div>
                                 </div>

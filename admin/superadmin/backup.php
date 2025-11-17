@@ -8,11 +8,19 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 
 require_once '../../cnx/db_connect.php';
+require_once '../inc/auditoria_functions.php';
 
 // Verificar rol de superadmin
 $stmt = $conn->prepare("SELECT rol FROM usuarios WHERE id = ?");
 $stmt->execute([$_SESSION['usuario_id']]);
 $usuario = $stmt->fetch();
+
+// Obtener configuración de base de datos
+$db_config = parse_ini_file('../../cnx/db_config.ini', true)['database'];
+$db_host = $db_config['host'] ?? 'localhost';
+$db_name = $db_config['dbname'] ?? 'sistema_rh_policia';
+$db_user = $db_config['username'] ?? 'root';
+$db_pass = $db_config['password'] ?? '';
 
 if ($usuario['rol'] !== 'SUPERADMIN') {
     header('Location: ../../index.php');
@@ -33,8 +41,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crear_backup'])) {
         $fecha = date('Y-m-d_His');
         $backup_file = $backup_dir . 'backup_sistema_rh_' . $fecha . '.sql';
         
-        // Comando para crear backup (usando mysqldump de Laragon)
-        $command = 'd:\Laragon\bin\mysql\mysql-8.4.0-winx64\bin\mysqldump.exe -u root sistema_rh_policia > ' . $backup_file;
+        // Comando para crear backup (detectar mysqldump automáticamente)
+        $mysqldump_paths = [
+            'd:\Laragon\bin\mysql\mysql-8.4.0-winx64\bin\mysqldump.exe',
+            'd:\Laragon\bin\mysql\mysql-8.0.30-winx64\bin\mysqldump.exe',
+            'd:\Laragon\bin\mysql\mysql-5.7.33-winx64\bin\mysqldump.exe',
+            'mysqldump' // Fallback al PATH del sistema
+        ];
+        
+        $mysqldump_path = null;
+        foreach ($mysqldump_paths as $path) {
+            if (file_exists($path) || $path === 'mysqldump') {
+                $mysqldump_path = $path;
+                break;
+            }
+        }
+        
+        if (!$mysqldump_path) {
+            throw new Exception('No se encontró mysqldump. Por favor, verifique la instalación de MySQL.');
+        }
+        
+        // Construir comando con contraseña si existe
+        $password_param = !empty($password) ? "-p'{$password}'" : '';
+        $command = "\"{$mysqldump_path}\" -u {$username} {$password_param} {$dbname} > \"{$backup_file}\"";
         
         exec($command, $output, $return_var);
         
@@ -79,9 +108,26 @@ if (is_dir($backup_dir)) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        /* Esquema de colores del sistema */
+        .system-primary { background: var(--primary-color, #104c75) !important; }
+        .system-secondary { background: var(--secondary-color, #0d3d5c) !important; }
+        .system-accent { background: linear-gradient(135deg, var(--primary-color, #104c75), var(--secondary-color, #0d3d5c)) !important; }
+
+        .btn-system {
+            background: var(--primary-color, #104c75);
+            border-color: var(--primary-color, #104c75);
+            color: #fff;
+        }
+        .btn-system:hover { background: var(--secondary-color, #0d3d5c); border-color: var(--secondary-color, #0d3d5c); color: #fff; }
+        .btn-outline-system { border-color: var(--primary-color, #104c75); color: var(--primary-color, #104c75); }
+        .btn-outline-system:hover { background: var(--primary-color, #104c75); color: #fff; }
+
+        .system-badge { background: var(--primary-color, #104c75); color: #fff; }
+
         .backup-card {
-            border: 2px solid #0d6efd;
-            border-radius: 15px;
+            border: 2px solid var(--primary-color, #104c75);
+            border-radius: 12px;
+            box-shadow: var(--shadow, 0 4px 20px rgba(0,0,0,0.08));
         }
         .backup-list {
             max-height: 400px;
@@ -99,7 +145,7 @@ if (is_dir($backup_dir)) {
             <main class="col-md-9 col-lg-10 px-4 py-4">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h2><i class="fas fa-database me-2"></i>Backup Base de Datos</h2>
-                    <span class="badge bg-warning text-dark">Super Admin</span>
+                    <span class="badge system-badge">Super Admin</span>
                 </div>
 
                 <?php if ($mensaje): ?>
@@ -112,7 +158,7 @@ if (is_dir($backup_dir)) {
                 <div class="row">
                     <div class="col-md-6">
                         <div class="card backup-card">
-                            <div class="card-header bg-primary text-white">
+                            <div class="card-header system-primary text-white">
                                 <h5 class="mb-0"><i class="fas fa-plus-circle me-2"></i>Crear Nuevo Backup</h5>
                             </div>
                             <div class="card-body">
@@ -120,7 +166,7 @@ if (is_dir($backup_dir)) {
                                 
                                 <form method="POST">
                                     <div class="d-grid">
-                                        <button type="submit" name="crear_backup" class="btn btn-success btn-lg">
+                                        <button type="submit" name="crear_backup" class="btn btn-system btn-lg">
                                             <i class="fas fa-database me-2"></i>Crear Backup Ahora
                                         </button>
                                     </div>
@@ -138,7 +184,7 @@ if (is_dir($backup_dir)) {
 
                     <div class="col-md-6">
                         <div class="card backup-card">
-                            <div class="card-header bg-info text-white">
+                            <div class="card-header system-secondary text-white">
                                 <h5 class="mb-0"><i class="fas fa-history me-2"></i>Backups Existentes</h5>
                             </div>
                             <div class="card-body backup-list">
@@ -157,7 +203,7 @@ if (is_dir($backup_dir)) {
                                             </small>
                                         </div>
                                         <a href="<?php echo $backup_dir . $backup['nombre']; ?>" 
-                                           class="btn btn-sm btn-outline-primary" download>
+                                           class="btn btn-sm btn-outline-system" download>
                                             <i class="fas fa-download"></i>
                                         </a>
                                     </div>

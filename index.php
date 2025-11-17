@@ -21,6 +21,9 @@ if ($_POST) {
                 $_SESSION['nombre_usuario'] = $usuario['nombre_usuario'];
                 $_SESSION['nombre_completo'] = $usuario['nombre_completo'];
                 $_SESSION['rol'] = $usuario['rol'];
+                if (function_exists('auditoriaLogin')) {
+                    auditoriaLogin($usuario['id'], true);
+                }
                 
                 // Redirigir según el rol
                 if ($usuario['rol'] == 'ADMIN') {
@@ -31,9 +34,15 @@ if ($_POST) {
                 exit();
             } else {
                 $error = "Credenciales incorrectas";
+                if (function_exists('auditoriaLogin')) {
+                    auditoriaLogin($usuario['id'], false);
+                }
             }
         } else {
             $error = "Usuario no encontrado";
+            if (function_exists('auditoriaLogin')) {
+                auditoriaLogin(null, false);
+            }
         }
         $stmt = null;
     } else {

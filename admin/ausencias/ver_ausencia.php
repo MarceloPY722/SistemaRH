@@ -280,9 +280,9 @@ $posicion_info = null;
     </div>
 
     <!-- Botón de Imprimir -->
-    <button class="btn btn-primary print-btn" onclick="window.print()">
+    <a class="btn btn-primary print-btn" href="imprimir_ausencia.php?id=<?php echo $ausencia_id; ?>" target="_blank">
         <i class="fas fa-print me-1"></i>Imprimir
-    </button>
+    </a>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>

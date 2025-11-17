@@ -8,17 +8,33 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
-// Obtener lugares de guardia para el filtro
-$lugares_guardias = $conn->query("SELECT id, nombre FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
-
 // Generar reportes según el tipo seleccionado
 $reporte_tipo = $_GET['tipo'] ?? '';
 $fecha_inicio = $_GET['fecha_inicio'] ?? date('Y-m-01');
 $fecha_fin = $_GET['fecha_fin'] ?? date('Y-m-t');
 $fecha_especifica = $_GET['fecha_especifica'] ?? '';
 $dia_semana = $_GET['dia_semana'] ?? '';
+$tipo_servicio_id = isset($_GET['tipo_servicio_id']) ? $_GET['tipo_servicio_id'] : '';
 
 $reportes_data = [];
+$metricas = [
+    'policias_activos' => 0,
+    'policias_inactivos' => 0,
+    'ausencias_activas' => 0,
+    'servicios_mes' => 0,
+    'guardias_total' => 0
+];
+try {
+    $metricas['policias_activos'] = (int)$conn->query("SELECT COUNT(*) FROM policias WHERE activo = 1")->fetchColumn();
+    $metricas['policias_inactivos'] = (int)$conn->query("SELECT COUNT(*) FROM policias WHERE activo = 0")->fetchColumn();
+    $metricas['ausencias_activas'] = (int)$conn->query("SELECT COUNT(*) FROM ausencias a WHERE a.estado = 'APROBADA' AND (a.fecha_fin IS NULL OR a.fecha_fin >= CURDATE()) AND a.fecha_inicio <= CURDATE()")->fetchColumn();
+    $stmtServ = $conn->prepare("SELECT COUNT(*) FROM servicios WHERE fecha_servicio BETWEEN :fi AND :ff");
+    $stmtServ->bindParam(':fi', $fecha_inicio);
+    $stmtServ->bindParam(':ff', $fecha_fin);
+    $stmtServ->execute();
+    $metricas['servicios_mes'] = (int)$stmtServ->fetchColumn();
+    $metricas['guardias_total'] = (int)$conn->query("SELECT COUNT(*) FROM guardias")->fetchColumn();
+} catch (Exception $e) {}
 
 if ($reporte_tipo) {
     switch ($reporte_tipo) {
@@ -47,12 +63,13 @@ if ($reporte_tipo) {
                 LEFT JOIN policias p ON s.jefe_servicio_id = p.id
                 LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
                 LEFT JOIN grados g ON tg.grado_id = g.id
-                WHERE s.fecha_servicio BETWEEN ? AND ?
+                WHERE s.fecha_servicio BETWEEN :fecha_inicio AND :fecha_fin
                 ORDER BY s.fecha_servicio DESC
             ");
-            $stmt->bind_param("ss", $fecha_inicio, $fecha_fin);
+            $stmt->bindParam(':fecha_inicio', $fecha_inicio, PDO::PARAM_STR);
+            $stmt->bindParam(':fecha_fin', $fecha_fin, PDO::PARAM_STR);
             $stmt->execute();
-            $reportes_data = $stmt->get_result();
+            $reportes_data = $stmt;
             break;
             
         case 'ausencias_periodo':
@@ -65,12 +82,13 @@ if ($reporte_tipo) {
                 LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
                 LEFT JOIN grados g ON tg.grado_id = g.id
                 JOIN tipos_ausencias ta ON a.tipo_ausencia_id = ta.id
-                WHERE a.fecha_inicio BETWEEN ? AND ?
+                WHERE a.fecha_inicio BETWEEN :fecha_inicio AND :fecha_fin
                 ORDER BY a.fecha_inicio DESC
             ");
-            $stmt->bind_param("ss", $fecha_inicio, $fecha_fin);
+            $stmt->bindParam(':fecha_inicio', $fecha_inicio, PDO::PARAM_STR);
+            $stmt->bindParam(':fecha_fin', $fecha_fin, PDO::PARAM_STR);
             $stmt->execute();
-            $reportes_data = $stmt->get_result();
+            $reportes_data = $stmt;
             break;
             
         case 'guardias_rotacion':
@@ -88,47 +106,6 @@ if ($reporte_tipo) {
             ");
             break;
             
-        case 'guardias_realizadas':
-            // Determinar si usar fecha específica o rango
-            if ($fecha_especifica) {
-                $stmt = $conn->prepare("
-                    SELECT gr.fecha_inicio as fecha_guardia, 
-                           CONCAT(p.nombre, ' ', p.apellido) as policia,
-                           p.cin, g.nombre as grado,
-                           lg.nombre as lugar_guardia,
-                           lg.id as lugar_guardia_id,
-                           gr.created_at as fecha_registro
-                    FROM guardias_realizadas gr
-                    JOIN policias p ON gr.policia_id = p.id
-                    LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
-                    LEFT JOIN grados g ON tg.grado_id = g.id
-                    JOIN lugares_guardias lg ON gr.lugar_guardia_id = lg.id
-                    WHERE DATE(gr.fecha_inicio) = ?
-                    ORDER BY lg.nombre ASC, gr.fecha_inicio DESC
-                ");
-                $stmt->bind_param("s", $fecha_especifica);
-            } else {
-                $stmt = $conn->prepare("
-                    SELECT gr.fecha_inicio as fecha_guardia, 
-                           CONCAT(p.nombre, ' ', p.apellido) as policia,
-                           p.cin, g.nombre as grado,
-                           lg.nombre as lugar_guardia,
-                           lg.id as lugar_guardia_id,
-                           gr.created_at as fecha_registro
-                    FROM guardias_realizadas gr
-                    JOIN policias p ON gr.policia_id = p.id
-                    LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
-                    LEFT JOIN grados g ON tg.grado_id = g.id
-                    JOIN lugares_guardias lg ON gr.lugar_guardia_id = lg.id
-                    WHERE gr.fecha_inicio BETWEEN ? AND ?
-                    ORDER BY lg.nombre ASC, gr.fecha_inicio DESC
-                ");
-                $stmt->bind_param("ss", $fecha_inicio, $fecha_fin);
-            }
-            $stmt->execute();
-            $reportes_data = $stmt->get_result();
-            break;
-            
         case 'guardias_por_dia':
             if ($dia_semana) {
                 $stmt = $conn->prepare("
@@ -143,18 +120,18 @@ if ($reporte_tipo) {
                         r.nombre as region,
                         lg.nombre as lugar_guardia,
                         DAYOFWEEK(gr.fecha_inicio) as dia_semana_num
-                    FROM guardias_realizadas gr
+                    FROM guardias gr
                     JOIN policias p ON gr.policia_id = p.id
                     LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
                     LEFT JOIN grados g ON tg.grado_id = g.id
                     LEFT JOIN regiones r ON p.region_id = r.id
                     LEFT JOIN lugares_guardias lg ON gr.lugar_guardia_id = lg.id
-                    WHERE DAYOFWEEK(gr.fecha_inicio) = ?
+                    WHERE DAYOFWEEK(gr.fecha_inicio) = :dia_semana
                     ORDER BY gr.fecha_inicio DESC, lg.nombre, p.apellido, p.nombre
                 ");
-                $stmt->bind_param('i', $dia_semana);
+                $stmt->bindParam(':dia_semana', $dia_semana, PDO::PARAM_INT);
                 $stmt->execute();
-                $reportes_data = $stmt->get_result();
+                $reportes_data = $stmt;
             }
             break;
             
@@ -181,9 +158,9 @@ if ($reporte_tipo) {
 // Verificar si hay guardias realizadas para el reporte por día
 $tiene_guardias = false;
 if ($reporte_tipo == 'guardias_por_dia') {
-    $sql_verificar = "SELECT COUNT(*) as total FROM guardias_realizadas";
+    $sql_verificar = "SELECT COUNT(*) as total FROM guardias";
     $result_verificar = $conn->query($sql_verificar);
-    $row = $result_verificar->fetch_assoc();
+    $row = $result_verificar->fetch(PDO::FETCH_ASSOC);
     $tiene_guardias = $row ? $row['total'] > 0 : false;
 }
 
@@ -311,15 +288,6 @@ $dias_semana = [
                             </div>
                         </div>
                         <div class="col-md-4 mb-4">
-                            <div class="card report-card" onclick="location.href='guardias_realizadas.php'">
-                                <div class="card-body text-center">
-                                    <i class="fas fa-shield-alt fa-3x text-success mb-3"></i>
-                                    <h5>Guardias Realizadas</h5>
-                                    <p class="text-muted">Historial detallado de guardias por fecha y lugar</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4 mb-4">
                             <div class="card report-card" onclick="showDayModal('guardias_por_dia')">
                                 <div class="card-body text-center">
                                     <i class="fas fa-calendar-day fa-3x text-purple mb-3"></i>
@@ -359,7 +327,6 @@ $dias_semana = [
                                     'servicios_periodo' => 'Reporte de Servicios por Período',
                                     'ausencias_periodo' => 'Reporte de Ausencias por Período',
                                     'guardias_rotacion' => 'Reporte de Lista de Guardias',
-                                    'guardias_realizadas' => 'Reporte de Guardias Realizadas',
                                     'guardias_por_dia' => 'Reporte de Guardias por Día de la Semana',
                                     'ausentes_activos' => 'Reporte de Ausentes Actuales'
                                 ];
@@ -389,22 +356,7 @@ $dias_semana = [
                                     </div>
                                     <small class="text-muted" id="searchInfo"></small>
                                 </div>
-                                <?php if (in_array($reporte_tipo, ['guardias_rotacion', 'guardias_realizadas', 'policias_deshabilitados'])): ?>
-                                <div class="col-md-4">
-                                    <select class="form-select" id="filtroLugarGuardia">
-                                        <option value="">Todos los lugares de guardia</option>
-                                        <?php 
-                                        if ($lugares_guardias && $lugares_guardias->num_rows > 0) {
-                                            $lugares_guardias->data_seek(0);
-                                            while ($lugar = $lugares_guardias->fetch_assoc()): 
-                                        ?>
-                                        <option value="<?php echo htmlspecialchars($lugar['nombre']); ?>"><?php echo htmlspecialchars($lugar['nombre']); ?></option>
-                                        <?php 
-                                            endwhile;
-                                        }
-                                        ?>
-                                    </select>
-                                </div>
+                                <?php if (in_array($reporte_tipo, ['guardias_rotacion', 'policias_deshabilitados'])): ?>
                                 <?php endif; ?>
                                 <div class="col-md-2">
                                     <button class="btn btn-outline-secondary w-100" id="limpiarFiltros">
@@ -425,10 +377,10 @@ $dias_semana = [
                                         <i class="fas fa-info-circle"></i>
                                         Selecciona un día de la semana para consultar las guardias.
                                     </div>
-                                <?php elseif ($reportes_data && $reportes_data->num_rows > 0): ?>
+                                <?php elseif ($reportes_data && $reportes_data->rowCount() > 0): ?>
                                     <div class="alert alert-info">
                                         <strong>Mostrando guardias para: <?= $dias_semana[$dia_semana] ?></strong>
-                                        <br>Total de guardias encontradas: <?= $reportes_data->num_rows ?>
+                                        <br>Total de guardias encontradas: <?= $reportes_data->rowCount() ?>
                                     </div>
                                     <div class="table-responsive">
                                         <table class="table table-striped">
@@ -442,7 +394,7 @@ $dias_semana = [
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                <?php while ($row = $reportes_data->fetch_assoc()): ?>
+                                                <?php while ($row = $reportes_data->fetch(PDO::FETCH_ASSOC)): ?>
                                                 <?php 
                                                 $nombre_completo = '';
                                                 if (!empty($row['grado_abreviatura'])) {
@@ -467,7 +419,7 @@ $dias_semana = [
                                         No se encontraron guardias para el día <?= $dias_semana[$dia_semana] ?>.
                                     </div>
                                 <?php endif; ?>
-                            <?php elseif ($reportes_data && $reportes_data->num_rows > 0): ?>
+                            <?php elseif ($reportes_data && $reportes_data->rowCount() > 0): ?>
                             <div class="table-responsive">
                                 <table class="table table-striped">
                                     <thead>
@@ -496,9 +448,6 @@ $dias_semana = [
                                                 case 'guardias_rotacion':
                                                     echo '<th>Posición</th><th>Policía</th><th>CIN</th><th>Grado</th><th>Última Guardia</th><th>Lugar</th>';
                                                     break;
-                                                case 'guardias_realizadas':
-                                                    echo '<th>Fecha Guardia</th><th>Policía</th><th>CIN</th><th>Grado</th><th>Lugar</th><th>Fecha Registro</th>';
-                                                    break;
                                                 case 'ausentes_activos':
                                                     echo '<th>Policía</th><th>CIN</th><th>Grado</th><th>Tipo Ausencia</th><th>Fecha Inicio</th><th>Fecha Fin</th><th>Días</th><th>Descripción</th>';
                                                     break;
@@ -507,7 +456,7 @@ $dias_semana = [
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <?php while ($row = $reportes_data->fetch_assoc()): ?>
+                                        <?php while ($row = $reportes_data->fetch(PDO::FETCH_ASSOC)): ?>
                                         <?php 
                                         // Generar data-search según el tipo de reporte
                                         $data_search = '';
@@ -523,9 +472,6 @@ $dias_semana = [
                                                 break;
                                             case 'guardias_rotacion':
                                                 $data_search = strtolower($row['policia'] . ' ' . $row['cin'] . ' ' . $row['grado'] . ' ' . ($row['lugar_guardia'] ?? 'no asignado'));
-                                                break;
-                                            case 'guardias_realizadas':
-                                                $data_search = strtolower($row['policia'] . ' ' . $row['cin'] . ' ' . $row['grado'] . ' ' . $row['lugar_guardia']);
                                                 break;
                                             case 'ausentes_activos':
                                                 $data_search = strtolower($row['policia'] . ' ' . $row['cin'] . ' ' . $row['grado'] . ' ' . $row['tipo_ausencia'] . ' ' . $row['descripcion']);
@@ -572,14 +518,6 @@ $dias_semana = [
                                                     echo '<td>' . htmlspecialchars($row['grado']) . '</td>';
                                                     echo '<td>' . ($row['ultima_guardia_fecha'] ? date('d/m/Y', strtotime($row['ultima_guardia_fecha'])) : 'Nunca') . '</td>';
                                                     echo '<td>' . htmlspecialchars($row['lugar_guardia'] ?? 'No asignado') . '</td>';
-                                                    break;
-                                                case 'guardias_realizadas':
-                                                    echo '<td>' . date('d/m/Y', strtotime($row['fecha_guardia'])) . '</td>';
-                                                    echo '<td>' . htmlspecialchars($row['policia']) . '</td>';
-                                                    echo '<td>' . htmlspecialchars($row['cin']) . '</td>';
-                                                    echo '<td>' . htmlspecialchars($row['grado']) . '</td>';
-                                                    echo '<td>' . htmlspecialchars($row['lugar_guardia']) . '</td>';
-                                                    echo '<td>' . date('d/m/Y H:i', strtotime($row['fecha_registro'])) . '</td>';
                                                     break;
                                                 case 'ausentes_activos':
                                                     echo '<td>' . htmlspecialchars($row['policia']) . '</td>';
@@ -708,7 +646,6 @@ $dias_semana = [
             const searchInput = document.getElementById('searchInput');
             const clearButton = document.getElementById('clearSearch');
             const searchInfo = document.getElementById('searchInfo');
-            const filtroLugarGuardia = document.getElementById('filtroLugarGuardia');
             const limpiarFiltros = document.getElementById('limpiarFiltros');
             
             if (searchInput) {
@@ -732,18 +669,11 @@ $dias_semana = [
                 });
             }
             
-            if (filtroLugarGuardia) {
-                filtroLugarGuardia.addEventListener('change', aplicarFiltros);
-            }
-            
             if (limpiarFiltros) {
                 limpiarFiltros.addEventListener('click', function() {
                     if (searchInput) {
                         searchInput.value = '';
                         clearButton.style.display = 'none';
-                    }
-                    if (filtroLugarGuardia) {
-                        filtroLugarGuardia.value = '';
                     }
                     aplicarFiltros();
                 });
@@ -752,11 +682,9 @@ $dias_semana = [
         
         function aplicarFiltros() {
             const searchInput = document.getElementById('searchInput');
-            const filtroLugarGuardia = document.getElementById('filtroLugarGuardia');
             const searchInfo = document.getElementById('searchInfo');
             
             const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
-            const lugarSeleccionado = filtroLugarGuardia ? filtroLugarGuardia.value.toLowerCase() : '';
             
             const filas = document.querySelectorAll('.reporte-row');
             let filasVisibles = 0;
@@ -770,11 +698,6 @@ $dias_semana = [
                     mostrar = false;
                 }
                 
-                // Filtro por lugar de guardia
-                if (lugarSeleccionado && !datosCompletos.includes(lugarSeleccionado)) {
-                    mostrar = false;
-                }
-                
                 if (mostrar) {
                     fila.style.display = '';
                     filasVisibles++;
@@ -785,7 +708,7 @@ $dias_semana = [
             
             // Actualizar información de búsqueda
             if (searchInfo) {
-                if (searchTerm || lugarSeleccionado) {
+                if (searchTerm) {
                     if (filasVisibles === 0) {
                         searchInfo.textContent = 'No se encontraron resultados';
                         searchInfo.className = 'text-warning';

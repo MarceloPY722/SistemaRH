@@ -8,6 +8,7 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 
 require_once '../../cnx/db_connect.php';
+require_once '../inc/auditoria_functions.php';
 
 // Verificar rol de superadmin
 $stmt = $conn->prepare("SELECT rol FROM usuarios WHERE id = ?");
@@ -19,49 +20,12 @@ if ($usuario['rol'] !== 'SUPERADMIN') {
     exit();
 }
 
-// Crear tabla de auditoría si no existe
-$conn->exec("CREATE TABLE IF NOT EXISTS auditoria_sistema (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    usuario_id INT,
-    accion VARCHAR(255) NOT NULL,
-    tabla_afectada VARCHAR(100),
-    registro_id INT,
-    datos_anteriores TEXT,
-    datos_nuevos TEXT,
-    ip_address VARCHAR(45),
-    user_agent TEXT,
-    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL
-)");
-
-// Función para registrar acciones de auditoría
-function registrarAuditoria($accion, $tabla_afectada = null, $registro_id = null, $datos_anteriores = null, $datos_nuevos = null) {
-    global $conn;
-    
-    $ip_address = $_SERVER['REMOTE_ADDR'];
-    $user_agent = $_SERVER['HTTP_USER_AGENT'];
-    
-    $stmt = $conn->prepare("INSERT INTO auditoria_sistema (usuario_id, accion, tabla_afectada, registro_id, datos_anteriores, datos_nuevos, ip_address, user_agent) 
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-    $stmt->execute([
-        $_SESSION['usuario_id'],
-        $accion,
-        $tabla_afectada,
-        $registro_id,
-        $datos_anteriores,
-        $datos_nuevos,
-        $ip_address,
-        $user_agent
-    ]);
-}
-
-// Obtener registros de auditoría con filtros
 $filtro_usuario = $_GET['usuario'] ?? '';
 $filtro_accion = $_GET['accion'] ?? '';
 $filtro_fecha_desde = $_GET['fecha_desde'] ?? '';
 $filtro_fecha_hasta = $_GET['fecha_hasta'] ?? '';
 
-$query = "SELECT a.*, u.nombre_usuario, u.nombre_completo 
+$query = "SELECT a.*, u.nombre_usuario, u.nombre_completo, u.rol 
           FROM auditoria_sistema a 
           LEFT JOIN usuarios u ON a.usuario_id = u.id 
           WHERE 1=1";
@@ -104,6 +68,8 @@ if (isset($_GET['exportar']) && $_GET['exportar'] === 'csv') {
     header('Content-Disposition: attachment; filename=auditoria_sistema_' . date('Y-m-d') . '.csv');
     
     $output = fopen('php://output', 'w');
+    // Forzar a Excel a interpretar como UTF-8 (evita "AcciÃ³n")
+    echo "\xEF\xBB\xBF"; // BOM UTF-8
     fputcsv($output, ['Fecha', 'Usuario', 'Acción', 'Tabla', 'Registro ID', 'IP', 'User Agent']);
     
     foreach ($registros_auditoria as $registro) {
@@ -132,23 +98,42 @@ if (isset($_GET['exportar']) && $_GET['exportar'] === 'csv') {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        /* Esquema de colores del sistema */
+        .system-primary { background: var(--primary-color, #104c75) !important; }
+        .system-secondary { background: var(--secondary-color, #0d3d5c) !important; }
+        .system-accent { background: linear-gradient(135deg, var(--primary-color, #104c75), var(--secondary-color, #0d3d5c)) !important; }
+
+        .btn-system {
+            background: var(--primary-color, #104c75);
+            border-color: var(--primary-color, #104c75);
+            color: #fff;
+        }
+        .btn-system:hover { background: var(--secondary-color, #0d3d5c); border-color: var(--secondary-color, #0d3d5c); color: #fff; }
+        .btn-outline-system { border-color: var(--primary-color, #104c75); color: var(--primary-color, #104c75); }
+        .btn-outline-system:hover { background: var(--primary-color, #104c75); color: #fff; }
+
+        .system-badge { background: var(--primary-color, #104c75); }
+
         .audit-card {
-            border: 2px solid #20c997;
-            border-radius: 15px;
+            border: 2px solid var(--primary-color, #104c75);
+            border-radius: 12px;
+            box-shadow: var(--shadow, 0 4px 20px rgba(0,0,0,0.08));
         }
         .audit-row {
-            border-left: 4px solid #20c997;
+            border-left: 4px solid var(--primary-color, #104c75);
             transition: all 0.3s;
         }
         .audit-row:hover {
-            background-color: #f8f9fa;
-            border-left-color: #198754;
+            background-color: rgba(16, 76, 117, 0.06);
+            border-left-color: var(--secondary-color, #0d3d5c);
         }
-        .table-responsive {
-            max-height: 600px;
-        }
-        .badge-action {
-            font-size: 0.75em;
+        .table-responsive { max-height: 600px; }
+        .badge-action { font-size: 0.75em; }
+
+        .table-header-system th {
+            background: var(--secondary-color, #0d3d5c);
+            color: #fff;
+            border-color: var(--secondary-color, #0d3d5c);
         }
     </style>
 </head>
@@ -162,12 +147,12 @@ if (isset($_GET['exportar']) && $_GET['exportar'] === 'csv') {
             <main class="col-md-9 col-lg-10 px-4 py-4">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h2><i class="fas fa-clipboard-list me-2"></i>Auditoría del Sistema</h2>
-                    <span class="badge bg-success"><?php echo $total_registros; ?> registros</span>
+                    <span class="badge system-badge"><?php echo $total_registros; ?> registros</span>
                 </div>
 
                 <!-- Filtros -->
                 <div class="card audit-card mb-4">
-                    <div class="card-header bg-success text-white">
+                    <div class="card-header system-primary text-white">
                         <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filtros</h5>
                     </div>
                     <div class="card-body">
@@ -197,10 +182,10 @@ if (isset($_GET['exportar']) && $_GET['exportar'] === 'csv') {
                             </div>
                             <div class="col-md-2 d-flex align-items-end">
                                 <div class="d-grid gap-2">
-                                    <button type="submit" class="btn btn-primary">
+                                    <button type="submit" class="btn btn-system">
                                         <i class="fas fa-search me-2"></i>Filtrar
                                     </button>
-                                    <a href="?" class="btn btn-outline-secondary">
+                                    <a href="?" class="btn btn-outline-system">
                                         <i class="fas fa-times me-2"></i>Limpiar
                                     </a>
                                 </div>
@@ -212,7 +197,7 @@ if (isset($_GET['exportar']) && $_GET['exportar'] === 'csv') {
                 <!-- Estadísticas -->
                 <div class="row mb-4">
                     <div class="col-md-4">
-                        <div class="card text-white bg-info mb-3">
+                        <div class="card text-white system-secondary mb-3">
                             <div class="card-body text-center">
                                 <h5><i class="fas fa-database me-2"></i>Total Registros</h5>
                                 <h3><?php echo $total_registros; ?></h3>
@@ -220,7 +205,7 @@ if (isset($_GET['exportar']) && $_GET['exportar'] === 'csv') {
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <div class="card text-white bg-warning mb-3">
+                        <div class="card text-white system-accent mb-3">
                             <div class="card-body text-center">
                                 <h5><i class="fas fa-cogs me-2"></i>Acciones Únicas</h5>
                                 <h3><?php echo count($acciones_unicas); ?></h3>
@@ -228,7 +213,7 @@ if (isset($_GET['exportar']) && $_GET['exportar'] === 'csv') {
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <div class="card text-white bg-success mb-3">
+                        <div class="card text-white system-primary mb-3">
                             <div class="card-body text-center">
                                 <h5><i class="fas fa-download me-2"></i>Exportar</h5>
                                 <a href="?exportar=csv<?php echo $_SERVER['QUERY_STRING'] ? '&' . $_SERVER['QUERY_STRING'] : ''; ?>" class="btn btn-light">
@@ -241,59 +226,31 @@ if (isset($_GET['exportar']) && $_GET['exportar'] === 'csv') {
 
                 <!-- Tabla de Auditoría -->
                 <div class="card audit-card">
-                    <div class="card-header bg-dark text-white">
+                    <div class="card-header system-secondary text-white">
                         <h5 class="mb-0"><i class="fas fa-history me-2"></i>Registros de Auditoría</h5>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
                             <table class="table table-hover">
-                                <thead class="table-dark">
+                                <thead class="table-header-system">
                                     <tr>
-                                        <th>Fecha/Hora</th>
-                                        <th>Usuario</th>
-                                        <th>Acción</th>
-                                        <th>Tabla</th>
-                                        <th>Registro</th>
-                                        <th>IP</th>
-                                        <th>Detalles</th>
+                                        <th>Rol</th>
+                                        <th>Nombre</th>
+                                        <th>Descripción</th>
+                                        <th>Fecha y Hora</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php foreach ($registros_auditoria as $registro): ?>
                                     <tr class="audit-row">
+                                        <td><strong><?php echo htmlspecialchars($registro['rol'] ?? 'N/A'); ?></strong></td>
+                                        <td><?php echo htmlspecialchars($registro['nombre_completo'] ?? ($registro['nombre_usuario'] ?? 'N/A')); ?></td>
+                                        <td><?php echo htmlspecialchars($registro['accion']); ?></td>
                                         <td>
-                                            <small><?php echo $registro['creado_en']; ?></small>
-                                        </td>
-                                        <td>
-                                            <strong><?php echo htmlspecialchars($registro['nombre_usuario'] ?? 'N/A'); ?></strong>
-                                            <br>
-                                            <small class="text-muted"><?php echo htmlspecialchars($registro['nombre_completo'] ?? ''); ?></small>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-primary badge-action">
-                                                <?php echo htmlspecialchars($registro['accion']); ?>
-                                            </span>
-                                        </td>
-                                        <td><?php echo htmlspecialchars($registro['tabla_afectada'] ?? 'N/A'); ?></td>
-                                        <td><?php echo $registro['registro_id'] ?? 'N/A'; ?></td>
-                                        <td>
-                                            <small class="text-muted"><?php echo htmlspecialchars($registro['ip_address']); ?></small>
-                                        </td>
-                                        <td>
-                                            <button class="btn btn-sm btn-outline-info" 
-                                                    data-bs-toggle="popover" 
-                                                    title="Detalles Completos"
-                                                    data-bs-content="
-                                                        <strong>User Agent:</strong> <?php echo htmlspecialchars($registro['user_agent']); ?><br>
-                                                        <?php if ($registro['datos_anteriores']): ?>
-                                                        <strong>Datos Anteriores:</strong> <?php echo htmlspecialchars($registro['datos_anteriores']); ?><br>
-                                                        <?php endif; ?>
-                                                        <?php if ($registro['datos_nuevos']): ?>
-                                                        <strong>Datos Nuevos:</strong> <?php echo htmlspecialchars($registro['datos_nuevos']); ?>
-                                                        <?php endif; ?>
-                                                    ">
-                                                <i class="fas fa-info-circle"></i>
-                                            </button>
+                                            <?php 
+                                                $fecha = $registro['creado_en'];
+                                                echo date('d-m-Y H:i', strtotime($fecha));
+                                            ?>
                                         </td>
                                     </tr>
                                     <?php endforeach; ?>

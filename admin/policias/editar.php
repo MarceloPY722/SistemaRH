@@ -70,10 +70,30 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'actualizar') {
         } elseif ($check_cin->rowCount() > 0) {
             $mensaje = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> El CIN ya está registrado por otro policía</div>";
         } else {
+            $stmt_prev = $conn->prepare("SELECT * FROM policias WHERE id = ?");
+            $stmt_prev->execute([$policia_id]);
+            $policia_prev = $stmt_prev->fetch(PDO::FETCH_ASSOC);
             $sql = "UPDATE policias SET legajo = ?, nombre = ?, apellido = ?, cin = ?, genero = ?, grado_id = ?, especialidad_id = ?, cargo = ?, comisionamiento = ?, telefono = ?, region_id = ?, lugar_guardia_id = ?, observaciones = ? WHERE id = ?";
             $stmt = $conn->prepare($sql);
             
             if ($stmt->execute([$legajo, $nombre, $apellido, $cin, $genero, $grado_id, $especialidad_id, $cargo, $comisionamiento, $telefono, $region_id, $lugar_guardia_id, $observaciones, $policia_id])) {
+                if (function_exists('auditoriaActualizar')) {
+                    auditoriaActualizar('policias', $policia_id, $policia_prev ?: null, [
+                        'legajo' => $legajo,
+                        'nombre' => $nombre,
+                        'apellido' => $apellido,
+                        'cin' => $cin,
+                        'genero' => $genero,
+                        'grado_id' => $grado_id,
+                        'especialidad_id' => $especialidad_id,
+                        'cargo' => $cargo,
+                        'comisionamiento' => $comisionamiento,
+                        'telefono' => $telefono,
+                        'region_id' => $region_id,
+                        'lugar_guardia_id' => $lugar_guardia_id,
+                        'observaciones' => $observaciones
+                    ]);
+                }
                 $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle'></i> Policía actualizado exitosamente</div>";
                 // Recargar datos del policía
                 $stmt = $conn->prepare("SELECT * FROM policias WHERE id = ?");
