@@ -48,68 +48,206 @@ if (!$policia) {
     <title>Detalles del Policía - Sistema RH</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="../css/sidebar.css">
     <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        :root {
+            --primary-color: #104c75;
+            --secondary-color: #1e7e34;
+            --accent-color: #ffc107;
+            --light-bg: #f8f9fa;
+            --text-primary: #2c3e50;
+            --text-secondary: #6c757d;
+            --border-color: rgba(16, 76, 117, 0.1);
+            --shadow-color: rgba(16, 76, 117, 0.1);
         }
-        .main-container {
-            padding: 20px 0;
-        }
-        .card {
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-        }
-        .card-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 15px 15px 0 0 !important;
+        
+        .main-content {
             padding: 20px;
+            background: var(--light-bg);
+            min-height: 100vh;
         }
+        
+        .details-header {
+            background: #fff;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 15px var(--shadow-color);
+            border: 1px solid var(--border-color);
+        }
+        
+        .details-header h1 {
+            color: var(--primary-color);
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-size: 1.8rem;
+        }
+        
+        .details-header p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            margin: 0;
+        }
+        
+        .details-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 3px 12px var(--shadow-color);
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .details-card:hover {
+            box-shadow: 0 8px 25px rgba(16, 76, 117, 0.15);
+            transform: translateY(-2px);
+        }
+        
+        .details-card-header {
+            background: linear-gradient(135deg, var(--primary-color), #1565c0);
+            color: white;
+            padding: 20px 25px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .details-card-header h3 {
+            margin: 0;
+            font-weight: 600;
+            font-size: 1.3rem;
+        }
+        
+        .details-card-body {
+            padding: 25px;
+        }
+        
         .info-row {
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid var(--border-color);
             padding: 15px 0;
+            display: flex;
+            align-items: center;
         }
+        
         .info-row:last-child {
             border-bottom: none;
         }
+        
         .info-label {
             font-weight: 600;
-            color: #495057;
+            color: var(--text-primary);
+            min-width: 150px;
+            margin-right: 15px;
         }
+        
         .info-value {
-            color: #6c757d;
+            color: var(--text-secondary);
+            flex: 1;
         }
+        
         .status-badge {
-            font-size: 0.9em;
-            padding: 8px 15px;
+            font-size: 0.85em;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 500;
         }
-        .btn-back {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            color: white;
+        
+        .btn-action {
+            border-radius: 8px;
             padding: 10px 20px;
-            border-radius: 25px;
+            font-weight: 500;
             transition: all 0.3s ease;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
         }
-        .btn-back:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        
+        .btn-primary-custom {
+            background: linear-gradient(135deg, var(--primary-color), #1565c0);
             color: white;
+        }
+        
+        .btn-primary-custom:hover {
+            background: linear-gradient(135deg, #0d3a5c, #104c75);
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16, 76, 117, 0.3);
+        }
+        
+        .btn-warning-custom {
+            background: linear-gradient(135deg, var(--accent-color), #ffb300);
+            color: #212529;
+        }
+        
+        .btn-warning-custom:hover {
+            background: linear-gradient(135deg, #e0a800, #ffc107);
+            color: #212529;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+        }
+        
+        .breadcrumb-container {
+            background: #fff;
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px var(--shadow-color);
+            border: 1px solid var(--border-color);
+        }
+        
+        .policia-avatar {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--primary-color), #1565c0);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 2rem;
+            margin-right: 20px;
+            box-shadow: 0 4px 12px rgba(16, 76, 117, 0.3);
         }
     </style>
 </head>
 <body>
-    <div class="container main-container">
-        <div class="row justify-content-center">
-            <div class="col-lg-8">
-                <div class="card">
-                    <div class="card-header text-center">
-                        <h3><i class="fas fa-user-circle me-2"></i>Detalles del Policía</h3>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <?php include '../inc/sidebar.php'; ?>
+            
+            <!-- Contenido Principal -->
+            <div class="col-md-9 col-lg-10">
+                <div class="main-content">
+                    <!-- Breadcrumb -->
+                    <div class="breadcrumb-container">
+                        <nav aria-label="breadcrumb">
+                            <ol class="breadcrumb mb-0">
+                                <li class="breadcrumb-item"><a href="../index.php">Dashboard</a></li>
+                                <li class="breadcrumb-item"><a href="index.php">Policías</a></li>
+                                <li class="breadcrumb-item active" aria-current="page">Detalles del Policía</li>
+                            </ol>
+                        </nav>
                     </div>
-                    <div class="card-body p-4">
+                    
+                    <!-- Encabezado -->
+                    <div class="details-header">
+                        <div class="d-flex align-items-center">
+                            <div class="policia-avatar">
+                                <i class="fas fa-user-shield"></i>
+                            </div>
+                            <div>
+                                <h1><i class="fas fa-user-circle me-2"></i>Detalles del Policía</h1>
+                                <p>Información completa del personal policial</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tarjeta de Detalles -->
+                    <div class="details-card">
+                        <div class="details-card-header">
+                            <h3><i class="fas fa-id-card me-2"></i>Información Personal</h3>
+                        </div>
+                        <div class="details-card-body">
                         <div class="row info-row">
                             <div class="col-md-3 info-label">Legajo:</div>
                             <div class="col-md-9 info-value"><?php echo htmlspecialchars($policia['legajo']); ?></div>
@@ -211,14 +349,15 @@ if (!$policia) {
                             </div>
                         </div>
                         <?php endif; ?>
+                        </div>
                     </div>
                     
-                    <div class="card-footer text-center bg-light">
-                        <a href="index.php" class="btn btn-back">
-                            <i class="fas fa-arrow-left me-2"></i>Volver al Listado
+                    <div class="card-footer text-center bg-light py-3">
+                        <a href="index.php" class="btn btn-action btn-primary-custom me-2">
+                            <i class="fas fa-arrow-left"></i>Volver al Listado
                         </a>
-                        <a href="editar.php?id=<?php echo $policia['id']; ?>" class="btn btn-warning ms-2">
-                            <i class="fas fa-edit me-2"></i>Editar
+                        <a href="editar.php?id=<?php echo $policia['id']; ?>" class="btn btn-action btn-warning-custom">
+                            <i class="fas fa-edit"></i>Editar
                         </a>
                     </div>
                 </div>

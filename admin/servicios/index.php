@@ -132,6 +132,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Cargar servicios con orden adaptable según columnas disponibles
 $cols = getServiciosColumns($conn);
 $orderCampo = in_array('fecha_inicio', $cols) ? 's.fecha_inicio' : (in_array('fecha_servicio', $cols) ? 's.fecha_servicio' : 's.created_at');
+
+// Filtrar por mes actual si no se especifica otro filtro
+$mes_actual = date('Y-m');
+$where_conditions = [];
+$params = [];
+
+// Si no hay filtros específicos, mostrar solo servicios del mes actual
+if (!isset($_GET['mostrar_todos'])) {
+    $fecha_campo = in_array('fecha_inicio', $cols) ? 's.fecha_inicio' : (in_array('fecha_servicio', $cols) ? 's.fecha_servicio' : 's.created_at');
+    $where_conditions[] = "DATE_FORMAT($fecha_campo, '%Y-%m') = ?";
+    $params[] = $mes_actual;
+}
+
+$where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
+
 $query = "
     SELECT 
         s.*,
@@ -140,11 +155,14 @@ $query = "
     FROM servicios s
     LEFT JOIN tipos_servicios ts ON s.tipo_servicio_id = ts.id
     LEFT JOIN asignaciones_servicios asig ON s.id = asig.servicio_id
+    $where_clause
     GROUP BY s.id
     ORDER BY $orderCampo DESC, s.created_at DESC
 ";
 
-$servicios = $conn->query($query)->fetchAll();
+$stmt = $conn->prepare($query);
+$stmt->execute($params);
+$servicios = $stmt->fetchAll();
 
 // Obtener tipos de servicios para filtros
 $tipos_servicios = $conn->query("SELECT * FROM tipos_servicios WHERE activo = 1 ORDER BY nombre")->fetchAll();
@@ -182,6 +200,41 @@ $tipos_servicios = $conn->query("SELECT * FROM tipos_servicios WHERE activo = 1 
                                 <a href="crear_servicio.php" class="btn btn-primary btn-lg">
                                     <i class="fas fa-plus me-2"></i>Nuevo Servicio
                                 </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Alertas -->
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <?php if (!isset($_GET['mostrar_todos'])): ?>
+                                        <span class="badge bg-info">
+                                            <i class="fas fa-filter me-1"></i>
+                                            Mostrando servicios de <?php echo date('F Y'); ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="badge bg-secondary">
+                                            <i class="fas fa-list me-1"></i>
+                                            Mostrando todos los servicios
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                                <div>
+                                    <?php if (!isset($_GET['mostrar_todos'])): ?>
+                                        <a href="?mostrar_todos=1" class="btn btn-outline-primary btn-sm">
+                                            <i class="fas fa-eye me-1"></i>Ver Todos
+                                        </a>
+                                    <?php else: ?>
+                                        <a href="index.php" class="btn btn-outline-primary btn-sm">
+                                            <i class="fas fa-calendar me-1"></i>Ver Mes Actual
+                                        </a>
+                                    <?php endif; ?>
+                                    <a href="historial_servicios.php" class="btn btn-outline-secondary btn-sm ms-2">
+                                        <i class="fas fa-history me-1"></i>Historial
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -111,17 +111,12 @@ if (isset($_SESSION['usuario_id'])) {
                     </a>
                     <ul class="submenu">
                         <li>
-                            <a href="/SistemaRH/admin/reportes/index.php" class="submenu-link">
+                            <a href="/SistemaRH/admin/reporte/index.php" class="submenu-link">
                                 <i class="fas fa-chart-line"></i>
                                 <span>Dashboard de Reportes</span>
                             </a>
                         </li>
-                        <li>
-                            <a href="/SistemaRH/admin/reportes/orden_dia.php" class="submenu-link">
-                                <i class="fas fa-calendar-day"></i>
-                                <span>Orden del Día</span>
-                            </a>
-                        </li>
+                        
                     </ul>
                 </li>
 
@@ -151,12 +146,7 @@ if (isset($_SESSION['usuario_id'])) {
                                 <span>Gestión de Usuarios</span>
                             </a>
                         </li>
-                        <li>
-                            <a href="/SistemaRH/admin/superadmin/policias_csv.php" class="submenu-link">
-                                <i class="fas fa-file-csv"></i>
-                                <span>Importar/Exportar Policías</span>
-                            </a>
-                        </li>
+                        
                         <li>
                             <a href="/SistemaRH/admin/superadmin/auditoria.php" class="submenu-link">
                                 <i class="fas fa-clipboard-list"></i>
@@ -169,12 +159,7 @@ if (isset($_SESSION['usuario_id'])) {
                                 <span>Resetear Guardias</span>
                             </a>
                         </li>
-                        <li>
-                            <a href="/SistemaRH/admin/superadmin/reset_servicios.php" class="submenu-link">
-                                <i class="fas fa-trash-alt"></i>
-                                <span>Eliminar Servicios</span>
-                            </a>
-                        </li>
+                        
                     </ul>
                 </li>
                 <?php endif; ?>
@@ -191,12 +176,6 @@ if (isset($_SESSION['usuario_id'])) {
                     
                     
                     <ul class="submenu">
-                        <li>
-                            <a href="/SistemaRH/admin/config/config_guard.php" class="submenu-link">
-                                <i class="fas fa-user-cog"></i>
-                                <span>Configuración de Guardias</span>
-                            </a>
-                        </li>
                         <li>
                             <a href="/SistemaRH/admin/config/config_legajo.php" class="submenu-link">
                                 <i class="fas fa-id-badge"></i>

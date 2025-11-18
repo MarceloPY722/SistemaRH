@@ -138,13 +138,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        .user-card { border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.08); }
-        .user-badge { font-size: 0.8em; }
+        .user-card { border-radius: 8px; box-shadow: 0 3px 10px rgba(0,0,0,0.08); }
+        .user-badge { font-size: 0.75em; }
         .table-responsive { max-height: 500px; }
         .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; }
         .page-header h2 { margin:0; }
         .card-header.bg-primary { background: linear-gradient(135deg, #104c75 0%, #0d3d5c 100%) !important; }
         .card-header.bg-info { background: linear-gradient(135deg, #17a2b8 0%, #0d3d5c 100%) !important; }
+        
+        /* Estilos para tabla compacta */
+        .table-compact {
+            font-size: 0.85rem;
+        }
+        .table-compact th,
+        .table-compact td {
+            padding: 0.5rem 0.75rem;
+            vertical-align: middle;
+        }
+        .table-compact .btn-group .btn {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+        .table-compact .btn-group {
+            gap: 2px;
+        }
+        .table-compact .text-muted {
+            font-size: 0.75rem;
+        }
+        .table-compact .badge {
+            font-size: 0.7rem;
+        }
+        .compact-card .card-body {
+            padding: 1rem;
+        }
+        .compact-form .form-control,
+        .compact-form .form-select {
+            font-size: 0.85rem;
+            padding: 0.5rem;
+        }
+        .compact-form .btn {
+            font-size: 0.85rem;
+            padding: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -169,12 +204,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="row">
                     <div class="col-md-4">
-                        <div class="card user-card">
+                        <div class="card user-card compact-card">
                             <div class="card-header bg-primary text-white">
                                 <h5 class="mb-0"><i class="fas fa-user-plus me-2"></i>Crear Nuevo Usuario</h5>
                             </div>
                             <div class="card-body">
-                                <form method="POST">
+                                <form method="POST" class="compact-form">
                                     <div class="mb-3">
                                         <label class="form-label">Nombre de Usuario *</label>
                                         <input type="text" name="nombre_usuario" class="form-control" required>
@@ -220,7 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </div>
                             <div class="card-body">
                                 <div class="table-responsive">
-                                    <table class="table table-striped">
+                                    <table class="table table-striped table-compact">
                                         <thead>
                                             <tr>
                                                 <th>Usuario</th>

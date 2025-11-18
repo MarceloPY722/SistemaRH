@@ -31,7 +31,6 @@ function resetearGuardias($conn) {
         $conn->exec("DELETE FROM guardias_generadas_detalle");
         $conn->exec("DELETE FROM guardias_asignaciones");
         $conn->exec("DELETE FROM guardias_generadas");
-        $conn->exec("DELETE FROM guardias_realizadas");
         $conn->exec("DELETE FROM historial_guardias_policia");
         
         // 2. Resetear la lista de guardias manteniendo solo policías activos
