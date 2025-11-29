@@ -101,24 +101,16 @@ if (isset($_SESSION['usuario_id'])) {
                 </li>
 
                 <!-- Reportes -->
-                <li class="nav-item has-submenu <?php echo (isset($_GET['page']) && $_GET['page'] === 'reportes') ? 'active' : ''; ?>">
-                    <a href="#" class="nav-link">
+                <li class="nav-item <?php echo (strpos($_SERVER['REQUEST_URI'] ?? '', '/admin/reporte/') !== false) ? 'active' : ''; ?>">
+                    <a href="/SistemaRH/admin/reporte/index.php" class="nav-link">
                         <div class="nav-icon">
                             <i class="fas fa-chart-bar"></i>
                         </div>
                         <span class="nav-text">Reportes</span>
-                        <i class="fas fa-chevron-right submenu-arrow"></i>
                     </a>
-                    <ul class="submenu">
-                        <li>
-                            <a href="/SistemaRH/admin/reporte/index.php" class="submenu-link">
-                                <i class="fas fa-chart-line"></i>
-                                <span>Dashboard de Reportes</span>
-                            </a>
-                        </li>
-                        
-                    </ul>
                 </li>
+
+                
 
                 <!-- Separador -->
                 <li class="nav-separator"></li>
@@ -146,7 +138,6 @@ if (isset($_SESSION['usuario_id'])) {
                                 <span>Gestión de Usuarios</span>
                             </a>
                         </li>
-                        
                         <li>
                             <a href="/SistemaRH/admin/superadmin/auditoria.php" class="submenu-link">
                                 <i class="fas fa-clipboard-list"></i>
@@ -159,7 +150,12 @@ if (isset($_SESSION['usuario_id'])) {
                                 <span>Resetear Guardias</span>
                             </a>
                         </li>
-                        
+                        <li>
+                            <a href="/SistemaRH/admin/superadmin/reset_servicios.php" class="submenu-link">
+                                <i class="fas fa-trash-alt"></i>
+                                <span>Eliminar Servicios</span>
+                            </a>
+                        </li>
                     </ul>
                 </li>
                 <?php endif; ?>
@@ -176,6 +172,12 @@ if (isset($_SESSION['usuario_id'])) {
                     
                     
                     <ul class="submenu">
+                        <li>
+                            <a href="/SistemaRH/admin/config/config_guard.php" class="submenu-link">
+                                <i class="fas fa-user-cog"></i>
+                                <span>Configuración de Guardias</span>
+                            </a>
+                        </li>
                         <li>
                             <a href="/SistemaRH/admin/config/config_legajo.php" class="submenu-link">
                                 <i class="fas fa-id-badge"></i>
@@ -496,6 +498,13 @@ if (isset($_SESSION['usuario_id'])) {
     color: #fff;
     background: rgba(255, 255, 255, 0.1);
     transform: translateX(5px);
+}
+
+.submenu-link.active {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.15);
+    font-weight: 600;
+    border-left: 3px solid #fff;
 }
 
 .submenu-link i {

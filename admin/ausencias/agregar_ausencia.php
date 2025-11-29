@@ -115,8 +115,8 @@ if ($_POST) {
             $stmt_junta->execute([$policia_id, $ausencia_id, $policia_data['lugar_guardia_id'], $siguiente_orden]);
             
           
-            $nuevo_principal = 6; 
-            $nuevo_reserva = $policia_data['lugar_guardia_id'];             
+            $nuevo_principal = $policia_data['lugar_guardia_reserva_id']; // Su guardia secundaria
+            $nuevo_reserva = $policia_data['lugar_guardia_id']; // Su lugar original de guardia             
             $stmt_intercambio = $conn->prepare("UPDATE policias SET lugar_guardia_id = ?, lugar_guardia_reserva_id = ? WHERE id = ?");
             
             if ($stmt_intercambio->execute([$nuevo_principal, $nuevo_reserva, $policia_id])) {
@@ -155,27 +155,26 @@ if ($_POST) {
                     ]);
                 }
                 
-                // Marcar al policía como disponible en su nuevo lugar de guardia
+                // Asegurar que el policía esté en lista_guardias para su nuevo lugar de guardia
                 try {
                     $stmt_disponible = $conn->prepare("CALL MarcarDisponibleEnNuevoLugar(?)");
                     $stmt_disponible->execute([$policia_id]);
                 } catch (Exception $e) {
-                    // Si el procedimiento no existe, asegurar que esté en lista_guardias
-                    $stmt_check_lista = $conn->prepare("SELECT COUNT(*) as count FROM lista_guardias WHERE policia_id = ?");
-                    $stmt_check_lista->execute([$policia_id]);
-                    $result_lista = $stmt_check_lista->fetch(PDO::FETCH_ASSOC);
+                    // Si el procedimiento no existe, manejar lista_guardias manualmente
                     
-                    if ($result_lista['count'] == 0) {
-                        // Agregar a lista_guardias si no está
-                        $stmt_add_lista = $conn->prepare("INSERT INTO lista_guardias (policia_id, posicion) SELECT ?, COALESCE(MAX(posicion), 0) + 1 FROM lista_guardias");
-                        $stmt_add_lista->execute([$policia_id]);
-                    }
+                    // Primero, eliminar al policía de su posición actual en lista_guardias
+                    $stmt_delete_lista = $conn->prepare("DELETE FROM lista_guardias WHERE policia_id = ?");
+                    $stmt_delete_lista->execute([$policia_id]);
+                    
+                    // Luego, agregarlo a lista_guardias con una nueva posición
+                    $stmt_add_lista = $conn->prepare("INSERT INTO lista_guardias (policia_id, posicion) SELECT ?, COALESCE(MAX(posicion), 0) + 1 FROM lista_guardias");
+                    $stmt_add_lista->execute([$policia_id]);
                 }
             }
         }
         
         if ($tipo_result && $tipo_result['nombre'] == 'Junta Medica') {
-            $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle me-2'></i><strong>Ya se agregó la ausencia permanente por Junta Médica.</strong><br>El lugar de guardia del policía ha sido cambiado automáticamente a <strong>ATENCIÓN TELEFÓNICA EXCLUSIVA</strong>.</div>";
+            $mensaje = "<div class='alert alert-success'><i class='fas fa-check-circle me-2'></i><strong>Ya se agregó la ausencia permanente por Junta Médica.</strong><br>El lugar de guardia del policía ha sido cambiado automáticamente a su <strong>guardia secundaria</strong>.</div>";
         } else {
             // Para ausencias que no son Junta Médica, cambiar estado a NO DISPONIBLE
             $stmt_prev = $conn->prepare("SELECT * FROM policias WHERE id = ?");

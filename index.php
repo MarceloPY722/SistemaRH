@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once 'session_config.php'; // Ngrok-compatible session configuration
 require_once 'cnx/db_connect.php';
 
 $error = "";

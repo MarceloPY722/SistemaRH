@@ -15,12 +15,24 @@ $stmt = $conn->prepare("SELECT rol FROM usuarios WHERE id = ?");
 $stmt->execute([$_SESSION['usuario_id']]);
 $usuario = $stmt->fetch();
 
-// Obtener configuración de base de datos
-$db_config = parse_ini_file('../../cnx/db_config.ini', true)['database'];
-$db_host = $db_config['host'] ?? 'localhost';
-$db_name = $db_config['dbname'] ?? 'sistema_rh_policia';
-$db_user = $db_config['username'] ?? 'root';
-$db_pass = $db_config['password'] ?? '';
+// Obtener configuración de base de datos desde la conexión existente
+// Leer el archivo de conexión para obtener las variables
+$db_config_content = file_get_contents('../../cnx/db_connect.php');
+
+// Extraer variables usando expresiones regulares
+preg_match("/\$servername\s*=\s*['\"](.+?)['\"]/", $db_config_content, $host_match);
+preg_match("/\$username\s*=\s*['\"](.+?)['\"]/", $db_config_content, $user_match);
+preg_match("/\$password\s*=\s*['\"](.*?)['\"]/", $db_config_content, $pass_match);
+preg_match("/\$dbname\s*=\s*['\"](.+?)['\"]/", $db_config_content, $db_match);
+
+$db_host = $host_match[1] ?? 'localhost';
+$db_name = $db_match[1] ?? 'sistema_rh_policia';
+$db_user = $user_match[1] ?? 'root';
+$db_pass = $pass_match[1] ?? '';
+
+if (empty($db_host) || empty($db_user) || empty($db_name)) {
+    die("Error: No se pudieron obtener las credenciales de la base de datos");
+}
 
 if ($usuario['rol'] !== 'SUPERADMIN') {
     header('Location: ../../index.php');
@@ -62,8 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crear_backup'])) {
         }
         
         // Construir comando con contraseña si existe
-        $password_param = !empty($password) ? "-p'{$password}'" : '';
-        $command = "\"{$mysqldump_path}\" -u {$username} {$password_param} {$dbname} > \"{$backup_file}\"";
+        $password_param = !empty($db_pass) ? "-p'{$db_pass}'" : '';
+        $command = "\"{$mysqldump_path}\" -u {$db_user} {$password_param} {$db_name} > \"{$backup_file}\"";
         
         exec($command, $output, $return_var);
         

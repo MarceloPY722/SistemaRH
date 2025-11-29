@@ -8,6 +8,55 @@ if (!isset($_SESSION['usuario_id'])) {
 
 require_once '../../cnx/db_connect.php';
 
+// Endpoint interno para devolver detalles HTML del policía (para el modal)
+if (isset($_GET['action']) && $_GET['action'] === 'detalles') {
+    header('Content-Type: text/html; charset=utf-8');
+    $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+    if ($id <= 0) {
+        echo '<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> ID inválido.</div>';
+        exit();
+    }
+
+    $sql_det = "
+        SELECT p.*, tg.nombre as grado_nombre, tg.abreviatura as grado_abreviatura,
+               g.nombre as categoria_nombre, e.nombre as especialidad_nombre,
+               lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre
+        FROM policias p
+        LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
+        LEFT JOIN grados g ON tg.grado_id = g.id
+        LEFT JOIN especialidades e ON p.especialidad_id = e.id
+        LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
+        LEFT JOIN regiones r ON p.region_id = r.id
+        WHERE p.id = ? AND p.activo = 0
+    ";
+    $stmt_det = $conn->prepare($sql_det);
+    $stmt_det->execute([$id]);
+    $policia = $stmt_det->fetch(PDO::FETCH_ASSOC);
+
+    if (!$policia) {
+        echo '<div class="alert alert-warning"><i class="fas fa-info-circle"></i> No se encontró el policía deshabilitado.</div>';
+        exit();
+    }
+
+    echo '<div class="row g-3">';
+    echo '  <div class="col-md-6"><strong>Legajo:</strong> ' . htmlspecialchars($policia['legajo']) . '</div>';
+    echo '  <div class="col-md-6"><strong>CIN:</strong> ' . htmlspecialchars($policia['cin']) . '</div>';
+    echo '  <div class="col-md-12"><strong>Nombre:</strong> ' . htmlspecialchars($policia['apellido'] . ', ' . $policia['nombre']) . '</div>';
+    echo '  <div class="col-md-6"><strong>Grado:</strong> ' . ($policia['grado_abreviatura'] ? htmlspecialchars($policia['grado_abreviatura'] . ' - ' . $policia['grado_nombre']) : '<span class="text-muted">No asignado</span>') . '</div>';
+    echo '  <div class="col-md-6"><strong>Categoría:</strong> ' . ($policia['categoria_nombre'] ? htmlspecialchars($policia['categoria_nombre']) : '<span class="text-muted">No asignada</span>') . '</div>';
+    echo '  <div class="col-md-6"><strong>Región:</strong> ' . ($policia['region_nombre'] ? htmlspecialchars($policia['region_nombre']) : '<span class="text-muted">No asignada</span>') . '</div>';
+    echo '  <div class="col-md-6"><strong>Lugar de Guardia:</strong> ' . ($policia['lugar_guardia_nombre'] ? htmlspecialchars($policia['lugar_guardia_nombre']) : '<span class="text-muted">No asignado</span>') . '</div>';
+    echo '  <div class="col-md-12"><strong>Especialidad:</strong> ' . ($policia['especialidad_nombre'] ? htmlspecialchars($policia['especialidad_nombre']) : '<span class="text-muted">Sin especialidad</span>') . '</div>';
+    echo '  <div class="col-md-12"><strong>Cargo:</strong> ' . ($policia['cargo'] ? htmlspecialchars($policia['cargo']) : '<span class="text-muted">No especificado</span>') . '</div>';
+    echo '  <div class="col-md-12"><strong>Comisionamiento:</strong> ' . ($policia['comisionamiento'] ? htmlspecialchars($policia['comisionamiento']) : '<span class="text-muted">No especificado</span>') . '</div>';
+    echo '  <div class="col-md-6"><strong>Teléfono:</strong> ' . ($policia['telefono'] ? htmlspecialchars($policia['telefono']) : '<span class="text-muted">No especificado</span>') . '</div>';
+    echo '  <div class="col-md-6"><strong>Estado:</strong> <span class="badge bg-danger"><i class="fas fa-times-circle"></i> Deshabilitado</span></div>';
+    echo '  <div class="col-md-6"><strong>Registrado:</strong> ' . ($policia['created_at'] ? date('d/m/Y H:i', strtotime($policia['created_at'])) : '-') . '</div>';
+    echo '  <div class="col-md-6"><strong>Actualizado:</strong> ' . ($policia['updated_at'] ? date('d/m/Y H:i', strtotime($policia['updated_at'])) : '-') . '</div>';
+    echo '</div>';
+    exit();
+}
+
 $mensaje = "";
 
 // Procesar reactivación de policía
@@ -35,16 +84,9 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'reactivar') {
 }
 
 // Obtener lista de policías deshabilitados
-$policias_deshabilitados = $conn->query("
-    SELECT p.*, tg.nombre as grado_nombre, g.nombre as categoria_nombre, e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre
-    FROM policias p
-    LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
-    LEFT JOIN grados g ON tg.grado_id = g.id
-    LEFT JOIN especialidades e ON p.especialidad_id = e.id
-    LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id
-    LEFT JOIN regiones r ON p.region_id = r.id
-    WHERE p.activo = 0
-    ORDER BY p.created_at DESC");
+$policias_deshabilitados = $conn->query("\n    SELECT p.*, tg.nombre as grado_nombre, g.nombre as categoria_nombre, e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre\n    FROM policias p\n    LEFT JOIN tipo_grados tg ON p.grado_id = tg.id\n    LEFT JOIN grados g ON tg.grado_id = g.id\n    LEFT JOIN especialidades e ON p.especialidad_id = e.id\n    LEFT JOIN lugares_guardias lg ON p.lugar_guardia_id = lg.id\n    LEFT JOIN regiones r ON p.region_id = r.id\n    WHERE p.activo = 0\n    ORDER BY p.created_at DESC");
+$policias_deshabilitados_list = $policias_deshabilitados->fetchAll(PDO::FETCH_ASSOC);
+$policias_deshabilitados_count = count($policias_deshabilitados_list);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -69,6 +111,18 @@ $policias_deshabilitados = $conn->query("
         }
         .btn-primary:hover {
             background: linear-gradient(45deg, #0d3d5c, #104c75);
+        }
+        .btn-outline-system {
+            border-color: #104c75;
+            color: #104c75;
+        }
+        .btn-outline-system:hover {
+            background: #104c75;
+            color: #fff;
+        }
+        .modal-header-system {
+            background: linear-gradient(45deg, #104c75, #0d3d5c);
+            color: #fff;
         }
         .card {
             border: none;
@@ -169,7 +223,7 @@ $policias_deshabilitados = $conn->query("
                                             <p class="mb-0">Aquí se muestran todos los policías que han sido deshabilitados del sistema. Puedes reactivarlos cuando sea necesario.</p>
                                         </div>
                                         <div class="col-md-4 text-end">
-                                            <h3 class="text-secondary"><?php echo $policias_deshabilitados->num_rows; ?></h3>
+                                            <h3 class="text-secondary"><?php echo $policias_deshabilitados_count; ?></h3>
                                             <small class="text-muted">Policías deshabilitados</small>
                                         </div>
                                     </div>
@@ -197,7 +251,7 @@ $policias_deshabilitados = $conn->query("
                             <h5><i class="fas fa-list"></i> Lista de Policías Deshabilitados</h5>
                         </div>
                         <div class="card-body">
-                            <?php if ($policias_deshabilitados->num_rows > 0): ?>
+                            <?php if ($policias_deshabilitados_count > 0): ?>
                             <div class="table-responsive">
                                 <table class="table table-striped" id="policiasTable">
                                     <thead>
@@ -213,7 +267,7 @@ $policias_deshabilitados = $conn->query("
                                         </tr>
                                     </thead>
                                     <tbody id="policiasTableBody">
-                                        <?php while ($policia = $policias_deshabilitados->fetch_assoc()): ?>
+                                        <?php foreach ($policias_deshabilitados_list as $policia): ?>
                                         <tr class="policia-row disabled-row" data-search="<?php echo strtolower($policia['legajo'] . ' ' . $policia['cin'] . ' ' . $policia['nombre'] . ' ' . $policia['apellido'] . ' ' . $policia['grado_nombre']); ?>">
                                             <td><strong><?php echo htmlspecialchars($policia['legajo']); ?></strong></td>
                                             <td><?php echo htmlspecialchars($policia['cin']); ?></td>
@@ -243,13 +297,13 @@ $policias_deshabilitados = $conn->query("
                                                     <button class="btn btn-sm btn-success" title="Reactivar Policía" onclick="reactivarPolicia(<?php echo $policia['id']; ?>, '<?php echo htmlspecialchars($policia['nombre'] . ' ' . $policia['apellido']); ?>')">
                                                         <i class="fas fa-user-check"></i>
                                                     </button>
-                                                    <button class="btn btn-sm btn-outline-info" title="Ver Detalles" onclick="verDetalles(<?php echo $policia['id']; ?>)">
+                                                    <button class="btn btn-sm btn-outline-system" title="Ver Detalles" onclick="verDetalles(<?php echo $policia['id']; ?>)">
                                                         <i class="fas fa-eye"></i>
                                                     </button>
                                                 </div>
                                             </td>
                                         </tr>
-                                        <?php endwhile; ?>
+                                        <?php endforeach; ?>
                                     </tbody>
                                 </table>
                             </div>
@@ -274,7 +328,7 @@ $policias_deshabilitados = $conn->query("
     <div class="modal fade" id="reactivarModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
-                <div class="modal-header bg-success text-white">
+                <div class="modal-header modal-header-system">
                     <h5 class="modal-title"><i class="fas fa-user-check"></i> Confirmar Reactivación</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -302,7 +356,7 @@ $policias_deshabilitados = $conn->query("
     <div class="modal fade" id="detallesModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <div class="modal-header bg-info text-white">
+                <div class="modal-header modal-header-system">
                     <h5 class="modal-title"><i class="fas fa-user"></i> Detalles del Policía</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -326,27 +380,28 @@ $policias_deshabilitados = $conn->query("
 
         // Función para ver detalles
         function verDetalles(id) {
-            // Aquí puedes implementar la carga de detalles vía AJAX
-            // Por ahora, mostraremos un mensaje simple
-            document.getElementById('detallesContent').innerHTML = `
+            const modal = new bootstrap.Modal(document.getElementById('detallesModal'));
+            const content = document.getElementById('detallesContent');
+            content.innerHTML = `
                 <div class="text-center">
                     <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
                     <p>Cargando detalles del policía...</p>
                 </div>
             `;
-            
-            const modal = new bootstrap.Modal(document.getElementById('detallesModal'));
             modal.show();
-            
-            // Simular carga de datos
-            setTimeout(() => {
-                document.getElementById('detallesContent').innerHTML = `
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i> Funcionalidad de detalles en desarrollo.
-                        <br>ID del policía: ${id}
-                    </div>
-                `;
-            }, 1000);
+
+            fetch(`deshabilitados.php?action=detalles&id=${id}`, { method: 'GET' })
+                .then(resp => resp.text())
+                .then(html => {
+                    content.innerHTML = html;
+                })
+                .catch(err => {
+                    content.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle"></i> Error al cargar detalles.
+                        </div>
+                    `;
+                });
         }
 
         // Funcionalidad de búsqueda

@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once '../session_config.php'; // Ngrok-compatible session configuration
 
 // Verificar si el usuario está logueado
 if (!isset($_SESSION['usuario_id'])) {
