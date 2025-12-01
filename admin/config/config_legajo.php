@@ -57,7 +57,7 @@ if ($_POST && isset($_POST['action'])) {
                 while ($row = $get_legajos->fetch(PDO::FETCH_ASSOC)) {
                     $legajos[$row['id']] = $row['legajo'];
                 }
-                $conn->begin_transaction();
+                $conn->beginTransaction();
                 try {
                     $temp_legajo_query = $conn->prepare("SELECT MAX(legajo) + 1000 as temp_legajo FROM policias");
                     $temp_legajo_query->execute();

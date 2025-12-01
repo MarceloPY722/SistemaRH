@@ -38,13 +38,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Insertar asignaciones de personal
         if (!empty($personal_seleccionado)) {
             $stmt_asignacion = $conn->prepare("
-                INSERT INTO asignaciones_servicios (servicio_id, policia_id, puesto, observaciones, created_at) 
-                VALUES (?, ?, ?, ?, NOW())
+                INSERT INTO asignaciones_servicios (servicio_id, policia_id, puesto, created_at) 
+                VALUES (?, ?, ?, NOW())
             ");
             $puestoPorDefecto = 'OFICIAL DE SERVICIO';
-            $observaciones = '';
             foreach ($personal_seleccionado as $policia_id) {
-                $stmt_asignacion->execute([$servicio_id, $policia_id, $puestoPorDefecto, $observaciones]);
+                $stmt_asignacion->execute([$servicio_id, $policia_id, $puestoPorDefecto]);
             }
         }
         
@@ -95,19 +94,17 @@ try {
                 <div class="main-content">
                     <!-- Header de la página -->
                     <div class="page-header mb-4">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h1 class="page-title">
-                                    <i class="fas fa-plus-circle me-3"></i>
-                                    Crear Nuevo Servicio
-                                </h1>
-                                <p class="page-subtitle text-muted">Complete la información del servicio y seleccione el personal</p>
-                            </div>
-                            <div>
-                                <a href="index.php" class="btn btn-outline-secondary btn-lg">
-                                    <i class="fas fa-arrow-left me-2"></i>Volver
-                                </a>
-                            </div>
+                        <div>
+                            <h1 class="page-title">
+                                <i class="fas fa-plus-circle me-3"></i>
+                                Crear Nuevo Servicio
+                            </h1>
+                            <p class="page-subtitle text-muted">Complete la información del servicio y seleccione el personal</p>
+                        </div>
+                        <div>
+                            <a href="index.php" class="btn btn-outline-secondary">
+                                <i class="fas fa-arrow-left me-2"></i>Volver
+                            </a>
                         </div>
                     </div>
 
@@ -374,6 +371,324 @@ try {
         </div>
     </div>
 
+    <style>
+        :root {
+            --primary-color: #104c75;
+            --primary-dark: #0d3d5c;
+            --secondary-color: #6c757d;
+            --bg-light: #f4f6f9;
+            --card-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.05);
+            --success-color: #2dce89;
+        }
+
+        body {
+            background-color: var(--bg-light);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        .main-content {
+            padding: 2rem;
+        }
+
+        /* Header Moderno */
+        .page-header {
+            background: white;
+            padding: 1.5rem 2rem;
+            border-radius: 12px;
+            box-shadow: var(--card-shadow);
+            margin-bottom: 2rem;
+            border: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .page-title {
+            color: var(--primary-color);
+            font-weight: 700;
+            font-size: 1.75rem;
+            margin: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .page-title i {
+            background: rgba(16, 76, 117, 0.1);
+            padding: 0.5rem;
+            border-radius: 8px;
+            margin-right: 1rem;
+            font-size: 1.2rem;
+        }
+
+        .page-subtitle {
+            color: var(--secondary-color);
+            margin-top: 0.25rem;
+            font-size: 0.95rem;
+            margin-left: 3.5rem;
+        }
+
+        /* Steps Indicator Moderno */
+        .steps-container {
+            background: transparent;
+            margin-bottom: 3rem;
+            padding: 0 1rem;
+        }
+
+        .step-indicator {
+            display: flex;
+            justify-content: space-between;
+            position: relative;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .step-indicator::before {
+            content: '';
+            position: absolute;
+            top: 25px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #e9ecef;
+            z-index: 0;
+        }
+
+        .step {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            width: 33.33%;
+        }
+
+        .step-icon {
+            width: 50px;
+            height: 50px;
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            font-size: 1.2rem;
+            color: #adb5bd;
+            transition: all 0.3s ease;
+        }
+
+        .step.active .step-icon {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+            box-shadow: 0 0 0 4px rgba(16, 76, 117, 0.1);
+        }
+
+        .step.completed .step-icon {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
+        }
+
+        .step-content h6 {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            color: #32325d;
+            font-size: 0.95rem;
+        }
+
+        .step.active .step-content h6 {
+            color: var(--primary-color);
+        }
+
+        .step-content p {
+            font-size: 0.8rem;
+            color: #8898aa;
+            margin: 0;
+        }
+
+        /* Form Cards */
+        .form-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: var(--card-shadow);
+            border: none;
+            max-width: 900px;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+
+        .card-header {
+            background: white;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding: 1.5rem 2rem;
+        }
+
+        .card-header h5 {
+            color: var(--primary-color);
+            font-weight: 600;
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        .card-body {
+            padding: 2rem;
+        }
+
+        .form-label {
+            font-weight: 600;
+            color: #525f7f;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-control, .form-select {
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            padding: 0.75rem 1rem;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(16, 76, 117, 0.1);
+        }
+
+        .form-text {
+            font-size: 0.8rem;
+            color: #8898aa;
+            margin-top: 0.4rem;
+        }
+
+        /* Botones */
+        .btn {
+            border-radius: 8px;
+            padding: 0.6rem 1.5rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+            border-color: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+
+        .btn-outline-secondary {
+            border-color: #dee2e6;
+            color: #525f7f;
+        }
+
+        .btn-outline-secondary:hover {
+            background-color: #f8f9fa;
+            color: #32325d;
+            border-color: #ced4da;
+        }
+
+        .form-actions {
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            justify-content: flex-end;
+            gap: 1rem;
+        }
+
+        /* Requisitos y Personal */
+        .requisitos-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 1.5rem;
+            border: 1px solid #e9ecef;
+        }
+
+        .personnel-list {
+            max-height: 500px;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+
+        .personnel-card {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .personnel-card:hover {
+            border-color: var(--primary-color);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .personnel-card.unavailable {
+            background: #f8f9fa;
+            opacity: 0.7;
+        }
+
+        .personnel-name {
+            font-weight: 600;
+            color: #32325d;
+            margin-bottom: 0.2rem;
+        }
+
+        .personnel-rank {
+            font-size: 0.85rem;
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
+        .availability-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            margin-left: 0.5rem;
+        }
+
+        .availability-badge.available {
+            background: rgba(45, 206, 137, 0.1);
+            color: var(--success-color);
+        }
+
+        .availability-badge.unavailable {
+            background: rgba(245, 54, 92, 0.1);
+            color: #f5365c;
+        }
+        
+        /* Stats en selección */
+        .stat-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 10px;
+            border: 1px solid #e9ecef;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .stat-card i {
+            font-size: 1.5rem;
+        }
+        
+        .stat-info h6 {
+            margin: 0;
+            font-size: 0.8rem;
+            color: #8898aa;
+        }
+        
+        .stat-number {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #32325d;
+        }
+    </style>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let pasoActual = 1;
@@ -1363,172 +1678,10 @@ try {
     </script>
 
     <style>
-        /* Estilos específicos para crear servicio */
-        .main-content {
-            background: #f8f9fa;
-            min-height: 100vh;
-            padding: 30px;
-        }
-
-        .page-header {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            border-left: 5px solid #104c75;
-        }
-
-        .page-title {
-            color: #104c75;
-            font-weight: 700;
-            margin: 0;
-        }
-
-        .page-subtitle {
-            margin: 5px 0 0 0;
-            font-size: 1.1em;
-        }
-
-        .steps-container {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-
-        .step-indicator {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .step {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 20px;
-            border-radius: 12px;
-            background: #f8f9fa;
-            border: 2px solid #dee2e6;
-            transition: all 0.3s ease;
-            flex: 1;
-            max-width: 300px;
-        }
-
-        .step.active {
-            background: #104c75;
-            color: white;
-            border-color: #104c75;
-        }
-
-        .step.completed {
-            background: #28a745;
-            color: white;
-            border-color: #28a745;
-        }
-
-        .step-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2em;
-        }
-
-        .step.active .step-icon,
-        .step.completed .step-icon {
-            background: rgba(255,255,255,0.2);
-        }
-
-        .step-content h6 {
-            margin: 0 0 5px 0;
-            font-weight: 600;
-        }
-
-        .step-content p {
-            margin: 0;
-            font-size: 0.9em;
-            opacity: 0.8;
-        }
-
-        .step-line {
-            height: 2px;
-            background: #dee2e6;
-            flex: 1;
-            margin: 0 20px;
-        }
-
-        .form-card {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-            margin-bottom: 30px;
-        }
-
-        .form-card .card-header {
-            background: #104c75;
-            color: white;
-            padding: 20px 30px;
-            border: none;
-        }
-
-        .form-card .card-body {
-            padding: 30px;
-        }
-
-        .form-group {
-            margin-bottom: 25px;
-        }
-
-        .form-label {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 8px;
-        }
-
-        .form-control, .form-select {
-            border-radius: 8px;
-            border: 2px solid #e9ecef;
-            padding: 12px 15px;
-            transition: all 0.3s ease;
-        }
-
-        .form-control:focus, .form-select:focus {
-            border-color: #104c75;
-            box-shadow: 0 0 0 0.2rem rgba(16, 76, 117, 0.25);
-        }
-
-        .form-text {
-            color: #6c757d;
-            font-size: 0.9em;
-            margin-top: 5px;
-        }
-
-        .form-actions {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-        }
-
+        /* Estilos adicionales y componentes específicos */
         .tipo-info-card {
             background: #f8f9fa;
             border: 1px solid #dee2e6;
-            border-radius: 12px;
-            padding: 20px;
-            margin-top: 15px;
-        }
-        
-        /* Estilos para la sección de requisitos */
-        .requisitos-section {
-            background: #f8f9fa;
-            border: 2px solid #dee2e6;
             border-radius: 12px;
             padding: 20px;
             margin-top: 15px;
@@ -1623,94 +1776,6 @@ try {
             }
         }
 
-        .personnel-list {
-            max-height: 500px;
-            overflow-y: auto;
-            border: 1px solid #dee2e6;
-            border-radius: 12px;
-            padding: 15px;
-        }
-
-        .personnel-card {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            margin-bottom: 6px;
-            transition: all 0.3s ease;
-        }
-
-        .personnel-card.available {
-            border-left: 4px solid #28a745;
-        }
-
-        .personnel-card.unavailable {
-            border-left: 4px solid #dc3545;
-            opacity: 0.7;
-            background-color: #f8f9fa;
-        }
-
-        .personnel-card:hover {
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .availability-badge {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.75em;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .availability-badge.available {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .availability-badge.unavailable {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .stat-card {
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            padding: 12px;
-            text-align: center;
-            transition: all 0.3s ease;
-            height: 100%;
-        }
-
-        .stat-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
-
-        .stat-card i {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-
-        .stat-info h6 {
-            margin: 0 0 5px 0;
-            color: #6c757d;
-            font-size: 0.9em;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .stat-number {
-            font-size: 1.8em;
-            font-weight: 700;
-            color: #333;
-        }
-
         .stats-container {
             margin-bottom: 16px;
         }
@@ -1719,21 +1784,6 @@ try {
             background: #f8f9fa;
             border-radius: 8px;
             padding: 12px;
-        }
-
-        .personnel-name {
-            margin: 0 0 5px 0;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .personnel-rank {
-            background: #e9ecef;
-            color: #495057;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-size: 0.8em;
-            font-weight: 500;
         }
 
         .personnel-details {

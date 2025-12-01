@@ -29,7 +29,7 @@ function resetearGuardias($conn) {
         
         // 1. Eliminar todas las guardias generadas y sus detalles
         $conn->exec("DELETE FROM guardias_generadas_detalle");
-        $conn->exec("DELETE FROM guardias_asignaciones");
+        // $conn->exec("DELETE FROM guardias_asignaciones"); // Tabla no existe
         $conn->exec("DELETE FROM guardias_generadas");
         $conn->exec("DELETE FROM historial_guardias_policia");
         

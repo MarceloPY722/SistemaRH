@@ -11,14 +11,11 @@ require_once '../../cnx/db_connect.php';
 $grados = $conn->query("SELECT tg.*, g.nombre as categoria_nombre FROM tipo_grados tg JOIN grados g ON tg.grado_id = g.id ORDER BY g.nivel_jerarquia ASC, tg.nivel_jerarquia ASC");
 
 $categorias_grados = $conn->query("SELECT DISTINCT g.nombre as categoria_nombre, g.nivel_jerarquia FROM grados g ORDER BY g.nivel_jerarquia ASC");
-// Obtener tipos específicos de grados para el segundo filtro
 $tipos_grados = $conn->query("SELECT tg.*, g.nombre as categoria_nombre FROM tipo_grados tg JOIN grados g ON tg.grado_id = g.id ORDER BY g.nivel_jerarquia ASC, tg.nivel_jerarquia ASC");
 $especialidades = $conn->query("SELECT * FROM especialidades ORDER BY nombre ASC");
 $regiones = $conn->query("SELECT * FROM regiones ORDER BY nombre ASC");
 $lugares_guardias = $conn->query("SELECT * FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
-// Lista deduplicada solo para filtro de Guardia
 $lugares_guardias_filtro = $conn->query("SELECT TRIM(nombre) AS nombre FROM lugares_guardias WHERE activo = 1 ORDER BY nombre ASC");
-// Construir lista única normalizando espacios para evitar clones
 $guardias_nombres = [];
 $guardias_set = [];
 foreach ($lugares_guardias_filtro->fetchAll(PDO::FETCH_COLUMN, 0) as $nombre) {
@@ -28,8 +25,6 @@ foreach ($lugares_guardias_filtro->fetchAll(PDO::FETCH_COLUMN, 0) as $nombre) {
         $guardias_nombres[] = trim($nombre);
     }
 }
-
-// Procesar formulario de nuevo policía
 if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
     $legajo = (int)trim($_POST['legajo']);
     $nombre = trim($_POST['nombre']);
@@ -55,7 +50,9 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] == 'crear') {
 
 $policias = $conn->query("
     SELECT p.*, tg.nombre as grado_nombre, tg.abreviatura as grado_abreviatura, g.nombre as categoria_nombre, 
-           e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre
+           e.nombre as especialidad_nombre, lg.nombre as lugar_guardia_nombre, r.nombre as region_nombre,
+           (SELECT ultima_guardia_fecha FROM lista_guardias WHERE policia_id = p.id LIMIT 1) as ultima_guardia,
+           (SELECT MAX(created_at) FROM asignaciones_servicios WHERE policia_id = p.id) as ultimo_servicio
     FROM policias p
     LEFT JOIN tipo_grados tg ON p.grado_id = tg.id
     LEFT JOIN grados g ON tg.grado_id = g.id
@@ -296,21 +293,23 @@ $policias = $conn->query("
                             <h5><i class="fas fa-list"></i> Lista de Policías Activos</h5>
                         </div>
                         <div class="card-body">
-                            <!-- Información de resultados de búsqueda -->
+                            
                             <div id="searchInfo" class="search-results-info" style="display: none;"></div>
                             
                             <div class="table-responsive">
-                                <table class="table table-striped" id="policiasTable">
+                                <table class="table table-striped table-sm" id="policiasTable">
                                     <thead>
                                         <tr>
                                             <th style="width: 8%;">Legajo</th>
-                            <th style="width: 10%;">CIN</th>
-                            <th style="width: 20%;">Nombre</th>
-                            <th style="width: 27%;">Grado</th>
-                            <th style="width: 10%;">Teléfono</th>
-                            <th style="width: 12%;">Guardia</th>
-                            <th style="width: 8%;">Región</th>
-                            <th style="width: 5%;">Acc.</th>
+                                            <th style="width: 10%;">CIN</th>
+                                            <th style="width: 20%;">Nombre</th>
+                                            <th style="width: 20%;">Grado</th>
+                                            <th style="width: 10%;">Teléfono</th>
+                                            <th style="width: 12%;">Guardia</th>
+                                            <th style="width: 8%;">Región</th>
+                                            <th style="width: 8%;">Últ. Guardia</th>
+                                            <th style="width: 8%;">Últ. Servicio</th>
+                                            <th style="width: 5%;">Acc.</th>
                                         </tr>
                                     </thead>
                                     <tbody id="policiasTableBody">
@@ -347,6 +346,12 @@ $policias = $conn->query("
                                                 <span class="badge bg-<?php echo (strtoupper($policia['region_nombre']) == 'CENTRAL') ? 'primary' : 'secondary'; ?>" style="font-size: 9px; padding: 2px 4px;">
                                                     <?php echo strtoupper($policia['region_nombre']) == 'CENTRAL' ? 'CENT' : 'REG'; ?>
                                                 </span>
+                                            </td>
+                                            <td class="searchable" style="font-size: 10px;">
+                                                <?php echo $policia['ultima_guardia'] ? date('d/m/Y', strtotime($policia['ultima_guardia'])) : '-'; ?>
+                                            </td>
+                                            <td class="searchable" style="font-size: 10px;">
+                                                <?php echo $policia['ultimo_servicio'] ? date('d/m/Y', strtotime($policia['ultimo_servicio'])) : '-'; ?>
                                             </td>
                                             <td>
                                                 <div class="btn-group" role="group">
@@ -470,8 +475,7 @@ $policias = $conn->query("
                             </div>
                             <div class="col-md-4 mb-3">
                                 <label class="form-label">Fecha de Ingreso *</label>
-                                // Eliminar el campo del modal (línea 366)
-                                // <input type="date" class="form-control" name="fecha_ingreso" required>
+                                <input type="date" class="form-control" name="fecha_ingreso" required>
                             </div>
                             
                             <div class="mb-3">
@@ -633,5 +637,3 @@ $policias = $conn->query("
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-
-   

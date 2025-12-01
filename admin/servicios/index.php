@@ -188,20 +188,16 @@ $tipos_servicios = $conn->query("SELECT * FROM tipos_servicios WHERE activo = 1 
                 <div class="main-content">
                     <!-- Header de la página -->
                     <div class="page-header mb-4">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h1 class="page-title">
-                                    <i class="fas fa-calendar-alt me-3"></i>
-                                    Gestión de Servicios
-                                </h1>
-                                <p class="page-subtitle text-muted">Administra y asigna servicios de personal</p>
-                            </div>
-                            <div>
-                                <a href="crear_servicio.php" class="btn btn-primary btn-lg">
-                                    <i class="fas fa-plus me-2"></i>Nuevo Servicio
-                                </a>
-                            </div>
+                        <div>
+                            <h1 class="page-title">
+                                <i class="fas fa-calendar-alt me-3"></i>
+                                Gestión de Servicios
+                            </h1>
+                            <p class="page-subtitle text-muted">Administra y asigna servicios de personal</p>
                         </div>
+                        <a href="crear_servicio.php" class="btn btn-primary">
+                            <i class="fas fa-plus me-2"></i>Nuevo Servicio
+                        </a>
                     </div>
 
                     <!-- Alertas -->
@@ -354,9 +350,6 @@ $tipos_servicios = $conn->query("SELECT * FROM tipos_servicios WHERE activo = 1 
                                     <i class="fas fa-calendar-plus"></i>
                                     <h4>No hay servicios registrados</h4>
                                     <p>Comienza creando tu primer servicio</p>
-                                    <a href="crear_servicio.php" class="btn btn-primary">
-                                        <i class="fas fa-plus me-2"></i>Crear Primer Servicio
-                                    </a>
                                 </div>
                             <?php else: ?>
                                 <div class="table-responsive">
@@ -366,7 +359,6 @@ $tipos_servicios = $conn->query("SELECT * FROM tipos_servicios WHERE activo = 1 
                                                 <th>Servicio</th>
                                                 <th>Fecha & Estado</th>
                                                 <th>Personal</th>
-                                                <th>Orden del Día</th>
                                                 <th>Acciones</th>
                                             </tr>
                                         </thead>
@@ -407,16 +399,6 @@ $tipos_servicios = $conn->query("SELECT * FROM tipos_servicios WHERE activo = 1 
                                                         <div class="personnel-count">
                                                             <i class="fas fa-users me-1"></i>
                                                             <span><?php echo $servicio['personal_asignado']; ?></span>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div class="order-info">
-                                                            <?php
-                                                                $orden = $servicio['orden_del_dia'] ?? '';
-                                                                echo $orden !== ''
-                                                                    ? htmlspecialchars(strlen($orden) > 50 ? substr($orden, 0, 50) . '...' : $orden)
-                                                                    : '<span class="text-muted">No asignado</span>';
-                                                            ?>
                                                         </div>
                                                     </td>
                                                     <td>
@@ -469,7 +451,6 @@ $tipos_servicios = $conn->query("SELECT * FROM tipos_servicios WHERE activo = 1 
                                                                         <div class="mb-2"><strong>Nombre:</strong> <?php echo htmlspecialchars($servicio['nombre'] ?? ''); ?></div>
                                                                         <div class="mb-2"><strong>Tipo:</strong> <?php echo htmlspecialchars($servicio['tipo_servicio'] ?? ''); ?></div>
                                                                         <div class="mb-2"><strong>Estado:</strong> <?php echo htmlspecialchars($servicio['estado'] ?? ''); ?></div>
-                                                                        <div class="mb-2"><strong>Orden del día:</strong> <?php echo htmlspecialchars($servicio['orden_del_dia'] ?? ''); ?></div>
                                                                     </div>
                                                                     <div class="col-md-6">
                                                                         <?php
@@ -483,26 +464,24 @@ $tipos_servicios = $conn->query("SELECT * FROM tipos_servicios WHERE activo = 1 
                                                                 <h6 class="mb-2">Personal Asignado</h6>
                                                                 <?php
                                                                     try {
-                                                                        $asig = $conn->prepare(
-                                                                            "SELECT 
+                                                                        $asig = $conn->prepare("
+                                                                            SELECT 
                                                                                 p.nombre, 
                                                                                 p.apellido, 
-                                                                                tg.abreviatura AS grado_abrev,
-                                                                                tg.nombre AS grado_nombre,
-                                                                                a.puesto,
-                                                                                a.lugar,
-                                                                                a.hora_inicio,
-                                                                                a.hora_fin
+                                                                                g.abreviatura AS grado_abrev,
+                                                                                g.nombre AS grado_nombre,
+                                                                                a.puesto
                                                                              FROM asignaciones_servicios a 
                                                                              JOIN policias p ON p.id = a.policia_id 
-                                                                             LEFT JOIN tipo_grados tg ON tg.id = p.grado_id 
+                                                                             LEFT JOIN grados g ON g.id = p.grado_id 
                                                                              WHERE a.servicio_id = ? 
-                                                                             ORDER BY tg.nivel_jerarquia ASC, p.apellido ASC"
+                                                                             ORDER BY g.nivel_jerarquia ASC, p.apellido ASC"
                                                                         );
                                                                         $asig->execute([$servicio['id']]);
                                                                         $asignados = $asig->fetchAll();
                                                                     } catch (Exception $e) {
                                                                         $asignados = [];
+                                                                        // Uncomment for debugging: echo "Error: " . $e->getMessage();
                                                                     }
                                                                 ?>
                                                                 <?php if (!empty($asignados)): ?>
@@ -694,91 +673,246 @@ $tipos_servicios = $conn->query("SELECT * FROM tipos_servicios WHERE activo = 1 
     </script>
 
     <style>
-        /* Estilos específicos para la página de servicios */
-        .main-content {
-            background: #f8f9fa;
-            min-height: 100vh;
-            padding: 30px;
+        :root {
+            --primary-color: #104c75;
+            --primary-dark: #0d3d5c;
+            --secondary-color: #6c757d;
+            --bg-light: #f4f6f9;
+            --card-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.05);
         }
 
+        body {
+            background-color: var(--bg-light);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        .main-content {
+            padding: 2rem;
+        }
+
+        /* Header Moderno */
         .page-header {
             background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            border-left: 5px solid #104c75;
+            padding: 1.5rem 2rem;
+            border-radius: 12px;
+            box-shadow: var(--card-shadow);
+            margin-bottom: 2rem;
+            border: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: nowrap;
+        }
+
+        .page-header > div:first-child {
+            flex: 0 1 auto;
+        }
+
+        .page-header > a,
+        .page-header > div:last-child {
+            flex: 0 0 auto;
+            margin-left: auto;
         }
 
         .page-title {
-            color: #104c75;
+            color: var(--primary-color);
             font-weight: 700;
+            font-size: 1.75rem;
             margin: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .page-title i {
+            background: rgba(16, 76, 117, 0.1);
+            padding: 0.5rem;
+            border-radius: 8px;
+            margin-right: 1rem;
+            font-size: 1.2rem;
         }
 
         .page-subtitle {
-            margin: 5px 0 0 0;
-            font-size: 1.1em;
+            color: var(--secondary-color);
+            margin-top: 0.25rem;
+            font-size: 0.95rem;
+            margin-left: 3.5rem; /* Alineado con el texto del título */
         }
 
+        /* Botones Refinados */
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            padding: 0.5rem 1.2rem;
+            font-weight: 500;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+            border-color: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px rgba(16, 76, 117, 0.2);
+        }
+
+        .btn-outline-primary {
+            color: var(--primary-color);
+            border-color: var(--primary-color);
+            border-radius: 6px;
+        }
+
+        .btn-outline-primary:hover {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        /* Stats Cards Minimalistas */
         .stats-card {
             background: white;
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: var(--card-shadow);
+            border: none;
+            height: 100%;
+            transition: transform 0.2s;
             display: flex;
             align-items: center;
-            gap: 20px;
-            transition: transform 0.3s ease;
+            justify-content: space-between;
         }
 
         .stats-card:hover {
-            transform: translateY(-5px);
+            transform: translateY(-3px);
         }
 
         .stats-icon {
-            width: 60px;
-            height: 60px;
-            border-radius: 15px;
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.5em;
+            font-size: 1.25rem;
             color: white;
         }
 
         .stats-content h3 {
-            margin: 0;
-            font-size: 2em;
+            font-size: 1.8rem;
             font-weight: 700;
-            color: #333;
+            margin: 0;
+            color: #2c3e50;
+            line-height: 1.2;
         }
 
         .stats-content p {
             margin: 0;
-            color: #666;
+            color: #8898aa;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Filtros y Tablas */
+        .filter-card, .services-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: var(--card-shadow);
+            border: none;
+            margin-bottom: 2rem;
+        }
+
+        .card-header {
+            background: white;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding: 1.25rem 1.5rem;
+            border-radius: 12px 12px 0 0 !important;
+        }
+
+        .card-header h5 {
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
+        .table thead th {
+            background-color: #f8f9fa;
+            border-bottom: 2px solid #e9ecef;
+            color: #8898aa;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            padding: 1rem;
+        }
+
+        .table tbody td {
+            padding: 1rem;
+            vertical-align: middle;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .service-name {
+            font-weight: 600;
+            color: #32325d;
+            margin-bottom: 0.25rem;
+        }
+
+        .service-type {
+            font-size: 0.8rem;
+            color: var(--primary-color);
+            background: rgba(16, 76, 117, 0.08);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .service-desc {
+            font-size: 0.85rem;
+            color: #8898aa;
+            margin-top: 0.25rem;
+            margin-bottom: 0;
+        }
+
+        .service-date {
             font-weight: 500;
+            color: #525f7f;
         }
 
-        .filter-card {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        /* Estados */
+        .service-status {
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-block;
+            margin-top: 0.25rem;
         }
 
-        .services-card {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
+        .status-programado { background-color: #e3f2fd; color: #1976d2; }
+        .status-en-curso { background-color: #fff3e0; color: #f57c00; }
+        .status-completado { background-color: #e8f5e9; color: #388e3c; }
+        .status-cancelado { background-color: #ffebee; color: #d32f2f; }
+        .status-default { background-color: #f8f9fa; color: #6c757d; }
+
+        /* Acciones */
+        .action-buttons .btn {
+            padding: 0.25rem 0.5rem;
+            margin: 0 0.1rem;
+            border-radius: 6px;
         }
 
         .services-card .card-header {
-            background: #104c75;
+            background: linear-gradient(45deg, #104c75, #0d3d5c);
             color: white;
             padding: 20px 30px;
             border: none;
+            border-radius: 15px 15px 0 0;
         }
 
+        .services-card .card-header h5 {
+            color: white !important;
+        }
+
+        /* Tabla */
         .services-table {
             margin: 0;
         }
@@ -786,105 +920,123 @@ $tipos_servicios = $conn->query("SELECT * FROM tipos_servicios WHERE activo = 1 
         .services-table th {
             background: #f8f9fa;
             border: none;
-            padding: 20px;
+            padding: 15px 20px;
             font-weight: 600;
-            color: #333;
+            color: #495057;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
         }
 
         .services-table td {
             padding: 20px;
             border: none;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid #f1f1f1;
+            vertical-align: middle;
+        }
+
+        .services-table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .services-table tbody tr:last-child td {
+            border-bottom: none;
         }
 
         .service-info .service-name {
-            margin: 0 0 5px 0;
             font-weight: 600;
-            color: #333;
+            color: #2c3e50;
+            margin-bottom: 5px;
+            font-size: 1.1em;
         }
 
         .service-type {
-            background: #e3f2fd;
-            color: #1976d2;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.8em;
+            font-size: 0.85em;
+            color: #104c75;
+            background: rgba(16, 76, 117, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
             font-weight: 500;
         }
 
         .service-desc {
-            margin: 8px 0 0 0;
-            color: #666;
             font-size: 0.9em;
+            color: #6c757d;
+            margin: 5px 0 0 0;
         }
 
-        .date-status .service-date {
-            color: #666;
-            margin-bottom: 8px;
+        .date-status {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .service-date {
+            font-weight: 500;
+            color: #495057;
         }
 
         .service-status {
-            padding: 6px 12px;
+            font-size: 0.85em;
+            padding: 4px 10px;
             border-radius: 20px;
-            font-size: 0.8em;
+            display: inline-block;
+            text-align: center;
             font-weight: 600;
-            text-transform: uppercase;
+            width: fit-content;
         }
 
-        .status-programado { background: #e3f2fd; color: #1976d2; }
-        .status-en-curso { background: #fff3e0; color: #f57c00; }
-        .status-completado { background: #e8f5e8; color: #388e3c; }
-        .status-cancelado { background: #ffebee; color: #d32f2f; }
+        .status-programado { background: #e3f2fd; color: #0d47a1; }
+        .status-en-curso { background: #fff3e0; color: #e65100; }
+        .status-completado { background: #e8f5e9; color: #1b5e20; }
+        .status-cancelado { background: #ffebee; color: #b71c1c; }
+        .status-default { background: #f5f5f5; color: #616161; }
 
         .personnel-count {
-            background: #f5f5f5;
-            padding: 8px 15px;
-            border-radius: 20px;
-            display: inline-flex;
+            display: flex;
             align-items: center;
-            color: #666;
+            gap: 8px;
+            color: #495057;
             font-weight: 500;
         }
 
         .order-info {
-            color: #666;
             font-size: 0.9em;
-        }
-
-        .action-buttons {
-            display: flex;
-            gap: 5px;
+            color: #6c757d;
         }
 
         .action-buttons .btn {
-            width: 35px;
-            height: 35px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 8px;
+            padding: 5px 10px;
+            border-radius: 6px;
+            margin-right: 3px;
         }
 
+        /* Empty State Mejorado */
         .empty-state {
             text-align: center;
-            padding: 80px 20px;
-            color: #666;
+            padding: 60px 20px;
+            background: linear-gradient(to bottom, #ffffff, #f8f9fa);
         }
 
         .empty-state i {
             font-size: 4em;
-            color: #ddd;
+            color: #cbd5e0;
             margin-bottom: 20px;
         }
 
         .empty-state h4 {
+            color: #2d3748;
             margin-bottom: 10px;
-            color: #333;
+            font-weight: 600;
         }
 
         .empty-state p {
-            margin-bottom: 30px;
+            color: #718096;
+            margin-bottom: 25px;
         }
     </style>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+

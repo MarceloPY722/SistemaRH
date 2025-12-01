@@ -15,15 +15,20 @@ $stmt = $conn->prepare("SELECT rol FROM usuarios WHERE id = ?");
 $stmt->execute([$_SESSION['usuario_id']]);
 $usuario = $stmt->fetch();
 
+if ($usuario['rol'] !== 'SUPERADMIN') {
+    header('Location: ../../index.php');
+    exit();
+}
+
 // Obtener configuración de base de datos desde la conexión existente
 // Leer el archivo de conexión para obtener las variables
 $db_config_content = file_get_contents('../../cnx/db_connect.php');
 
 // Extraer variables usando expresiones regulares
-preg_match("/\$servername\s*=\s*['\"](.+?)['\"]/", $db_config_content, $host_match);
-preg_match("/\$username\s*=\s*['\"](.+?)['\"]/", $db_config_content, $user_match);
-preg_match("/\$password\s*=\s*['\"](.*?)['\"]/", $db_config_content, $pass_match);
-preg_match("/\$dbname\s*=\s*['\"](.+?)['\"]/", $db_config_content, $db_match);
+preg_match("/\\\$servername\\s*=\\\s*['\"](.+?)['\"]/", $db_config_content, $host_match);
+preg_match("/\\\$username\\s*=\\\s*['\"](.+?)['\"]/", $db_config_content, $user_match);
+preg_match("/\\\$password\\s*=\\\s*['\"](.*?)['\"]/", $db_config_content, $pass_match);
+preg_match("/\\\$dbname\\s*=\\\s*['\"](.+?)['\"]/", $db_config_content, $db_match);
 
 $db_host = $host_match[1] ?? 'localhost';
 $db_name = $db_match[1] ?? 'sistema_rh_policia';
@@ -32,11 +37,6 @@ $db_pass = $pass_match[1] ?? '';
 
 if (empty($db_host) || empty($db_user) || empty($db_name)) {
     die("Error: No se pudieron obtener las credenciales de la base de datos");
-}
-
-if ($usuario['rol'] !== 'SUPERADMIN') {
-    header('Location: ../../index.php');
-    exit();
 }
 
 $mensaje = '';
@@ -53,37 +53,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crear_backup'])) {
         $fecha = date('Y-m-d_His');
         $backup_file = $backup_dir . 'backup_sistema_rh_' . $fecha . '.sql';
         
-        // Comando para crear backup (detectar mysqldump automáticamente)
-        $mysqldump_paths = [
-            'd:\Laragon\bin\mysql\mysql-8.4.0-winx64\bin\mysqldump.exe',
-            'd:\Laragon\bin\mysql\mysql-8.0.30-winx64\bin\mysqldump.exe',
-            'd:\Laragon\bin\mysql\mysql-5.7.33-winx64\bin\mysqldump.exe',
-            'mysqldump' // Fallback al PATH del sistema
-        ];
-        
+        // Intentar encontrar mysqldump usando 'where' en Windows
         $mysqldump_path = null;
-        foreach ($mysqldump_paths as $path) {
-            if (file_exists($path) || $path === 'mysqldump') {
-                $mysqldump_path = $path;
-                break;
+        $output_where = [];
+        $return_where = 0;
+        exec('where mysqldump', $output_where, $return_where);
+        
+        if ($return_where === 0 && !empty($output_where)) {
+            $mysqldump_path = trim($output_where[0]);
+        } else {
+            // Fallback a rutas comunes si 'where' falla
+            $common_paths = [
+                'D:\Laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysqldump.exe', // Ruta encontrada
+                'd:\Laragon\bin\mysql\mysql-8.4.0-winx64\bin\mysqldump.exe',
+                'd:\Laragon\bin\mysql\mysql-8.0.30-winx64\bin\mysqldump.exe',
+                'd:\Laragon\bin\mysql\mysql-5.7.33-winx64\bin\mysqldump.exe',
+                'C:\xampp\mysql\bin\mysqldump.exe',
+                'C:\wamp64\bin\mysql\mysql8.0.21\bin\mysqldump.exe'
+            ];
+            
+            foreach ($common_paths as $path) {
+                if (file_exists($path)) {
+                    $mysqldump_path = $path;
+                    break;
+                }
             }
         }
-        
         if (!$mysqldump_path) {
-            throw new Exception('No se encontró mysqldump. Por favor, verifique la instalación de MySQL.');
+            // Último intento: asumir que está en el PATH
+            $mysqldump_path = 'mysqldump';
         }
         
         // Construir comando con contraseña si existe
-        $password_param = !empty($db_pass) ? "-p'{$db_pass}'" : '';
-        $command = "\"{$mysqldump_path}\" -u {$db_user} {$password_param} {$db_name} > \"{$backup_file}\"";
+        $password_param = !empty($db_pass) ? "-p\"{$db_pass}\"" : '';
+        // Agregar opciones para evitar problemas comunes
+        $options = "--routines --events --triggers --single-transaction --column-statistics=0";
         
+        // En Windows, el manejo de comillas con exec y redirección puede ser complicado.
+        // Usamos cmd /c y envolvemos todo el comando en comillas dobles adicionales.
+        $cmd_command = "\"{$mysqldump_path}\" -u {$db_user} {$password_param} {$db_name} {$options} > \"{$backup_file}\" 2>&1";
+        $command = "cmd /c \"{$cmd_command}\"";
+        
+        $output = [];
+        $return_var = 0;
         exec($command, $output, $return_var);
         
         if ($return_var === 0) {
-            $mensaje = '✅ Backup creado exitosamente: ' . basename($backup_file);
-            $tipo_mensaje = 'success';
+            // Verificar si el archivo se creó y tiene contenido
+            if (file_exists($backup_file) && filesize($backup_file) > 0) {
+                $mensaje = '✅ Backup creado exitosamente: ' . basename($backup_file);
+                
+                if (function_exists('auditoriaSistema')) {
+                    auditoriaSistema($_SESSION['usuario_id'], 'Backup creado', 'sistema', 0, null, ['archivo' => basename($backup_file)]);
+                }
+            } else {
+                $mensaje = '❌ El archivo de backup se creó pero está vacío. Posible error de permisos o configuración.';
+                $tipo_mensaje = 'danger';
+                if (file_exists($backup_file)) unlink($backup_file); // Borrar archivo vacío
+            }
         } else {
-            $mensaje = '❌ Error al crear backup. Verifique la configuración de MySQL.';
+            $error_output = implode("\n", $output);
+            $mensaje = '❌ Error al crear backup. Código: ' . $return_var . '. <br>Detalles: ' . $error_output . '<br>Comando intentado: ' . htmlspecialchars($command);
             $tipo_mensaje = 'danger';
         }
         

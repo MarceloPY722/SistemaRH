@@ -150,12 +150,7 @@ if (isset($_SESSION['usuario_id'])) {
                                 <span>Resetear Guardias</span>
                             </a>
                         </li>
-                        <li>
-                            <a href="/SistemaRH/admin/superadmin/reset_servicios.php" class="submenu-link">
-                                <i class="fas fa-trash-alt"></i>
-                                <span>Eliminar Servicios</span>
-                            </a>
-                        </li>
+                        
                     </ul>
                 </li>
                 <?php endif; ?>
@@ -172,12 +167,6 @@ if (isset($_SESSION['usuario_id'])) {
                     
                     
                     <ul class="submenu">
-                        <li>
-                            <a href="/SistemaRH/admin/config/config_guard.php" class="submenu-link">
-                                <i class="fas fa-user-cog"></i>
-                                <span>Configuración de Guardias</span>
-                            </a>
-                        </li>
                         <li>
                             <a href="/SistemaRH/admin/config/config_legajo.php" class="submenu-link">
                                 <i class="fas fa-id-badge"></i>

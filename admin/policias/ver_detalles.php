@@ -38,6 +38,34 @@ if (!$policia) {
     header("Location: index.php");
     exit();
 }
+
+// Obtener última guardia
+$sql_ultima_guardia = "
+    SELECT gg.fecha_guardia, lg.nombre as lugar_guardia
+    FROM guardias_generadas_detalle ggd
+    INNER JOIN guardias_generadas gg ON ggd.guardia_generada_id = gg.id
+    LEFT JOIN lugares_guardias lg ON ggd.lugar_guardia_id = lg.id
+    WHERE ggd.policia_id = ?
+    ORDER BY gg.fecha_guardia DESC
+    LIMIT 1
+";
+$stmt_guardia = $conn->prepare($sql_ultima_guardia);
+$stmt_guardia->execute([$policia_id]);
+$ultima_guardia = $stmt_guardia->fetch(PDO::FETCH_ASSOC);
+
+// Obtener último servicio
+$sql_ultimo_servicio = "
+    SELECT s.fecha_inicio, s.fecha_fin, ts.nombre as tipo_servicio, s.descripcion
+    FROM asignaciones_servicios as_serv
+    INNER JOIN servicios s ON as_serv.servicio_id = s.id
+    LEFT JOIN tipos_servicios ts ON s.tipo_servicio_id = ts.id
+    WHERE as_serv.policia_id = ?
+    ORDER BY s.fecha_inicio DESC
+    LIMIT 1
+";
+$stmt_servicio = $conn->prepare($sql_ultimo_servicio);
+$stmt_servicio->execute([$policia_id]);
+$ultimo_servicio = $stmt_servicio->fetch(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -320,6 +348,38 @@ if (!$policia) {
                             <div class="col-md-3 info-label">Observaciones:</div>
                             <div class="col-md-9 info-value">
                                 <?php echo $policia['observaciones'] ? htmlspecialchars($policia['observaciones']) : '<span class="text-muted">Sin observaciones</span>'; ?>
+                            </div>
+                        </div>
+                        
+                        <div class="row info-row">
+                            <div class="col-md-3 info-label">Última Guardia:</div>
+                            <div class="col-md-9 info-value">
+                                <?php if ($ultima_guardia): ?>
+                                    <strong><?php echo date('d/m/Y', strtotime($ultima_guardia['fecha_guardia'])); ?></strong>
+                                    <?php if ($ultima_guardia['lugar_guardia']): ?>
+                                        - <?php echo htmlspecialchars($ultima_guardia['lugar_guardia']); ?>
+                                    <?php endif; ?>
+
+                                <?php else: ?>
+                                    <span class="text-muted">Sin guardias registradas</span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        
+                        <div class="row info-row">
+                            <div class="col-md-3 info-label">Último Servicio:</div>
+                            <div class="col-md-9 info-value">
+                                <?php if ($ultimo_servicio): ?>
+                                    <strong><?php echo date('d/m/Y', strtotime($ultimo_servicio['fecha_inicio'])); ?></strong>
+                                    <?php if ($ultimo_servicio['tipo_servicio']): ?>
+                                        - <?php echo htmlspecialchars($ultimo_servicio['tipo_servicio']); ?>
+                                    <?php endif; ?>
+                                    <?php if ($ultimo_servicio['descripcion']): ?>
+                                        <br><small class="text-muted"><?php echo htmlspecialchars($ultimo_servicio['descripcion']); ?></small>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="text-muted">Sin servicios registrados</span>
+                                <?php endif; ?>
                             </div>
                         </div>
                         
